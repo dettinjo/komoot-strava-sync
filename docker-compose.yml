@@ -1,0 +1,9 @@
+services:
+  komoot-strava-sync:
+    build: .
+    image: komoot-strava-sync:latest
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      # Persistent storage for SQLite DB and Strava token
+      - ./data:/data
