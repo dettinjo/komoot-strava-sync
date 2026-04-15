@@ -1,5 +1,7 @@
 # komoot-strava-sync
 
+![komoot-strava-sync logo](img/logo.jpg)
+
 A self-hosted service that automatically syncs your completed **Komoot** activities to **Strava** — including the full GPX track, activity name, and description. Designed to run as a Docker container in [Coolify](https://coolify.io/) or any other Docker host.
 
 ---
@@ -161,3 +163,9 @@ Two independent mechanisms prevent the same activity from appearing twice in Str
 **Activity appears with wrong sport type** — The Komoot sport string for your activity isn't in the mapping table. Open `app/komoot.py` and add it to `SPORT_TYPE_MAP`.
 
 **Activity is not private** — Ensure your Strava default activity privacy is set to "Only You" (Settings → Privacy Controls → Activities).
+
+---
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
