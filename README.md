@@ -113,7 +113,23 @@ On first startup the service syncs the last `INITIAL_SYNC_DAYS` (default: 30) da
 2. In Coolify create a new **Docker Compose** service pointing at the repo.
 3. Mount `./data` as a persistent volume to `/data`.
 4. Add all env vars from `.env` in the Coolify environment settings.
-5. Deploy — no ports need to be exposed (the OAuth flow is done locally before deployment).
+5. Deploy — the service exposes port 8080 strictly for health checks so Coolify correctly displays its health status! No other ports need to be exposed to the public internet.
+
+---
+
+## Rebuilding the Database from Strava
+
+If you move to a new server or lose your `data/sync.db` file, the service would normally attempt to re-upload all your past Komoot activities. To prevent duplicates, you can rebuild your database perfectly by scanning your Strava history!
+
+**How it works**: Every upload made by this tool attaches a hidden tag (`external_id=komoot_TOUR_ID`). We can scan Strava for this tag and re-populate the local database.
+
+To recover your missing connections:
+1. Open a terminal in your environment (for Coolify, go to the **Terminal** tab of your app).
+2. Run the recovery script:
+   ```bash
+   python scripts/rebuild_db.py
+   ```
+3. The script will safely reverse-engineer your database history straight from Strava, preventing duplicate uploads on the next sync!
 
 ---
 

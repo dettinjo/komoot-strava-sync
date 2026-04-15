@@ -135,6 +135,28 @@ def main() -> None:
 
     db.init_db()
 
+    # Start healthcheck server for Docker / Coolify
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+    import threading
+
+    class HealthCheckHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-type", "text/plain")
+            self.end_headers()
+            self.wfile.write(b"OK")
+        def log_message(self, format, *args):
+            pass
+
+    def start_health_server():
+        logger.info("Starting healthcheck server on port 8080")
+        try:
+            HTTPServer(('0.0.0.0', 8080), HealthCheckHandler).serve_forever()
+        except Exception as e:
+            logger.error("Healthcheck server failed: %s", e)
+
+    threading.Thread(target=start_health_server, daemon=True).start()
+
     strava = StravaClient()
     if not strava.is_authorized():
         logger.error(
