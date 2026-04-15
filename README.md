@@ -1,6 +1,6 @@
 # komoot-strava-sync
 
-![komoot-strava-sync logo](img/logo.jpg)
+<img src="img/logo.jpg" alt="komoot-strava-sync logo" width="300" />
 
 A self-hosted service that automatically syncs your completed **Komoot** activities to **Strava** — including the full GPX track, activity name, and description. Designed to run as a Docker container in [Coolify](https://coolify.io/) or any other Docker host.
 
