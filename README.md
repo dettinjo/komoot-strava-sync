@@ -53,9 +53,18 @@ After reviewing each activity you can change its visibility to "Followers" or "E
 ### Prerequisites
 
 - Docker + Docker Compose (or Coolify)
-- A **Strava API application** — create one at <https://www.strava.com/settings/api>
-  - Set **Authorization Callback Domain** to `localhost` (for the token helper script)
-  - Required scopes: `activity:write,activity:read_all`
+- A **Strava API application** — create one at <https://www.strava.com/settings/api>. If your Strava interface is in another language (e.g., German), here is how to fill out the form:
+
+  | Field (German / English) | What to enter |
+  |---|---|
+  | Anwendungsname / Application Name | `Komoot Sync` (or anything you like) |
+  | Kategorie / Category | `Other` |
+  | Club / Club | *(leave empty)* |
+  | Website / Website | `http://localhost` |
+  | Anwendungsbeschreibung / Application Description | `Syncs Komoot activities to Strava` |
+  | Callback-Domain zur Autorisierung / Authorization Callback Domain | `localhost` |
+
+  - *Note: Required auth scopes (`activity:write,activity:read_all`) are requested automatically during the token generation.*
 - Your **Komoot user ID** — visible in your profile URL:
   `https://www.komoot.com/user/123456789` → ID is `123456789`
 
