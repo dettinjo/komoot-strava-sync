@@ -2,7 +2,7 @@ SHELL := /bin/zsh
 COMPOSE_SAAS := docker compose --env-file .env.saas
 COMPOSE_SELFHOSTED := docker compose --env-file .env.selfhosted
 
-.PHONY: status dev dev-stop dev-logs api worker test lint format check migrate migrate-gen
+.PHONY: status dev dev-stop dev-logs api worker test lint format check migrate migrate-gen shell-db standalone pre-commit-install
 
 status:
 	git status --short
@@ -39,3 +39,12 @@ migrate:
 
 migrate-gen:
 	cd backend && alembic revision --autogenerate -m "$(name)"
+
+shell-db:
+	$(COMPOSE_SAAS) exec db psql -U postgres komoot_strava
+
+standalone:
+	docker compose -f docker-compose.yml up -d
+
+pre-commit-install:
+	pre-commit install
