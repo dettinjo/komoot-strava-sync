@@ -1,3 +1,4 @@
+from __future__ import annotations
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -10,13 +11,14 @@ class Settings(BaseSettings):
     STRAVA_CLIENT_SECRET: str
     STRIPE_SECRET_KEY: str = ""
     STRIPE_WEBHOOK_SECRET: str = ""
+    STRIPE_PRICE_PRO: str = ""
+    STRIPE_PRICE_BUSINESS: str = ""
     LICENSE_SERVER_URL: str = ""
     ENVIRONMENT: str = "production"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
-    STRAVA_REDIRECT_URI: str = "http://localhost:8000/auth/strava/callback"
+    FRONTEND_URL: str = "http://localhost:3000"
     STRAVA_WEBHOOK_VERIFY_TOKEN: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
-
 
 settings = Settings()

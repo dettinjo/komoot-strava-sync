@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
-from datetime import datetime, UTC
+from datetime import datetime, timezone
 from typing import Callable
 
 import redis.asyncio as aioredis
@@ -25,7 +25,7 @@ __all__ = [
     "oauth2_scheme",
 ]
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
@@ -119,7 +119,7 @@ async def get_current_api_key_user(
         raise credentials_exception
     if api_key_record.revoked_at is not None:
         raise credentials_exception
-    if api_key_record.expires_at is not None and api_key_record.expires_at < datetime.now(UTC):
+    if api_key_record.expires_at is not None and api_key_record.expires_at < datetime.now(timezone.utc):
         raise credentials_exception
 
     result = await db.execute(

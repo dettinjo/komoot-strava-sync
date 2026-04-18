@@ -1,17 +1,52 @@
 services:
-  komoot-strava-sync:
-    build: .
-    image: komoot-strava-sync:latest
+  api:
+    build: ./backend
     restart: unless-stopped
-    env_file: .env
-    volumes:
-      # Persistent storage for SQLite DB and Strava token
-      - ./data:/data
-    ports:
-      - "8080:8080"
+    ports: ["8000:8000"]
+    env_file: .env.saas
+    depends_on:
+      db: {condition: service_healthy}
+      redis: {condition: service_healthy}
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080')"]
-      interval: 60s
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 30s
+      start_period: 40s
+
+  worker:
+    build: ./backend
+    command: python -m arq app.jobs.worker.WorkerSettings
+    restart: unless-stopped
+    env_file: .env.saas
+    depends_on:
+      db: {condition: service_healthy}
+      redis: {condition: service_healthy}
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    environment:
+      POSTGRES_DB: komoot_strava_sync
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d komoot_strava_sync"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes: [redis_data:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  redis_data:

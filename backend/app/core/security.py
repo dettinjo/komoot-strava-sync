@@ -1,8 +1,10 @@
+from __future__ import annotations
 import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
 
 from cryptography.fernet import Fernet
+from cryptography.fernet import InvalidToken
 from fastapi import HTTPException, status
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -66,6 +68,17 @@ def encrypt(plaintext: str) -> bytes:
 def decrypt(ciphertext: bytes) -> str:
     """Decrypt Fernet token bytes and return the plaintext string."""
     return get_fernet().decrypt(ciphertext).decode()
+
+
+def decrypt_maybe_plaintext(value: bytes | str) -> str:
+    """Return a plaintext token from either encrypted bytes or legacy raw bytes."""
+    if isinstance(value, str):
+        return value
+
+    try:
+        return decrypt(value)
+    except InvalidToken:
+        return value.decode()
 
 
 def hash_api_key(raw_key: str) -> str:

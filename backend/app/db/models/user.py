@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, UTC
-from typing import TYPE_CHECKING
+from datetime import datetime, timezone
+from typing import Optional, TYPE_CHECKING
 from uuid import UUID, uuid4
 
 import sqlalchemy as sa
@@ -25,13 +25,13 @@ class StravaApp(Base):
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True),
         nullable=False,
-        default=lambda: datetime.now(UTC),
+        default=lambda: datetime.now(timezone.utc),
     )
     daily_requests: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
     daily_reset_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True),
         nullable=False,
-        default=lambda: datetime.now(UTC),
+        default=lambda: datetime.now(timezone.utc),
     )
 
 
@@ -49,48 +49,48 @@ class User(Base):
         nullable=False,
         index=True,
     )
-    email_verified_at: Mapped[datetime | None] = mapped_column(
+    email_verified_at: Mapped[Optional[datetime]] = mapped_column(
         sa.DateTime(timezone=True), nullable=True
     )
-    password_hash: Mapped[str | None] = mapped_column(sa.String, nullable=True)
+    password_hash: Mapped[Optional[str]] = mapped_column(sa.String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True),
         nullable=False,
-        default=lambda: datetime.now(UTC),
+        default=lambda: datetime.now(timezone.utc),
     )
     updated_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True),
         nullable=False,
-        default=lambda: datetime.now(UTC),
-        onupdate=lambda: datetime.now(UTC),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
     )
-    last_login_at: Mapped[datetime | None] = mapped_column(
+    last_login_at: Mapped[Optional[datetime]] = mapped_column(
         sa.DateTime(timezone=True), nullable=True
     )
     is_active: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=True)
     is_admin: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=False)
 
     # Komoot credentials (encrypted)
-    komoot_email_encrypted: Mapped[bytes | None] = mapped_column(
+    komoot_email_encrypted: Mapped[Optional[bytes]] = mapped_column(
         sa.LargeBinary, nullable=True
     )
-    komoot_password_encrypted: Mapped[bytes | None] = mapped_column(
+    komoot_password_encrypted: Mapped[Optional[bytes]] = mapped_column(
         sa.LargeBinary, nullable=True
     )
     komoot_key_version: Mapped[int] = mapped_column(
         sa.Integer, nullable=False, default=1
     )
-    komoot_user_id: Mapped[str | None] = mapped_column(sa.String, nullable=True)
-    komoot_connected_at: Mapped[datetime | None] = mapped_column(
+    komoot_user_id: Mapped[Optional[str]] = mapped_column(sa.String, nullable=True)
+    komoot_connected_at: Mapped[Optional[datetime]] = mapped_column(
         sa.DateTime(timezone=True), nullable=True
     )
     komoot_poll_interval_min: Mapped[int] = mapped_column(
         sa.Integer, nullable=False, default=60
     )
-    next_komoot_poll_at: Mapped[datetime | None] = mapped_column(
+    next_komoot_poll_at: Mapped[Optional[datetime]] = mapped_column(
         sa.DateTime(timezone=True), nullable=True
     )
-    last_komoot_poll_at: Mapped[datetime | None] = mapped_column(
+    last_komoot_poll_at: Mapped[Optional[datetime]] = mapped_column(
         sa.DateTime(timezone=True), nullable=True
     )
 
@@ -104,7 +104,7 @@ class User(Base):
     hide_from_home_default: Mapped[bool] = mapped_column(
         sa.Boolean, nullable=False, default=True
     )
-    timezone: Mapped[str] = mapped_column(sa.String, nullable=False, default="UTC")
+    timezone: Mapped[str] = mapped_column(sa.String, nullable=False, default="timezone.utc")
 
     # Relationships
     subscription: Mapped[Subscription] = relationship(
@@ -129,7 +129,7 @@ class StravaToken(Base):
         sa.ForeignKey("users.id", ondelete="CASCADE"),
         primary_key=True,
     )
-    strava_app_id: Mapped[int | None] = mapped_column(
+    strava_app_id: Mapped[Optional[int]] = mapped_column(
         sa.Integer,
         sa.ForeignKey("strava_apps.id"),
         nullable=True,
@@ -153,7 +153,7 @@ class StravaToken(Base):
     connected_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), nullable=False
     )
-    last_refreshed_at: Mapped[datetime | None] = mapped_column(
+    last_refreshed_at: Mapped[Optional[datetime]] = mapped_column(
         sa.DateTime(timezone=True), nullable=True
     )
 

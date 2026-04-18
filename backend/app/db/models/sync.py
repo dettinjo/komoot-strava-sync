@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, UTC
-from typing import TYPE_CHECKING
+from datetime import datetime, timezone
+from typing import Optional, TYPE_CHECKING
 from uuid import UUID, uuid4
 
 import sqlalchemy as sa
@@ -40,28 +40,28 @@ class SyncedActivity(Base):
         nullable=False,
         index=True,
     )
-    komoot_tour_id: Mapped[str | None] = mapped_column(sa.String, nullable=True)
-    strava_activity_id: Mapped[str | None] = mapped_column(sa.String, nullable=True)
+    komoot_tour_id: Mapped[Optional[str]] = mapped_column(sa.String, nullable=True)
+    strava_activity_id: Mapped[Optional[str]] = mapped_column(sa.String, nullable=True)
     sync_direction: Mapped[str] = mapped_column(sa.String, nullable=False)
     synced_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True),
         nullable=False,
-        default=lambda: datetime.now(UTC),
+        default=lambda: datetime.now(timezone.utc),
         index=True,
     )
     sync_status: Mapped[str] = mapped_column(
         sa.String, nullable=False, default="completed"
     )
-    activity_name: Mapped[str | None] = mapped_column(sa.String, nullable=True)
-    sport_type: Mapped[str | None] = mapped_column(sa.String, nullable=True)
-    distance_m: Mapped[float | None] = mapped_column(sa.Float, nullable=True)
-    elevation_up_m: Mapped[float | None] = mapped_column(sa.Float, nullable=True)
-    started_at: Mapped[datetime | None] = mapped_column(
+    activity_name: Mapped[Optional[str]] = mapped_column(sa.String, nullable=True)
+    sport_type: Mapped[Optional[str]] = mapped_column(sa.String, nullable=True)
+    distance_m: Mapped[Optional[float]] = mapped_column(sa.Float, nullable=True)
+    elevation_up_m: Mapped[Optional[float]] = mapped_column(sa.Float, nullable=True)
+    started_at: Mapped[Optional[datetime]] = mapped_column(
         sa.DateTime(timezone=True), nullable=True
     )
-    duration_seconds: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
-    conflict_reason: Mapped[str | None] = mapped_column(sa.String, nullable=True)
-    resolved_at: Mapped[datetime | None] = mapped_column(
+    duration_seconds: Mapped[Optional[int]] = mapped_column(sa.Integer, nullable=True)
+    conflict_reason: Mapped[Optional[str]] = mapped_column(sa.String, nullable=True)
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(
         sa.DateTime(timezone=True), nullable=True
     )
 
@@ -77,20 +77,20 @@ class UserSyncState(Base):
         sa.ForeignKey("users.id", ondelete="CASCADE"),
         primary_key=True,
     )
-    last_komoot_sync_at: Mapped[datetime | None] = mapped_column(
+    last_komoot_sync_at: Mapped[Optional[datetime]] = mapped_column(
         sa.DateTime(timezone=True), nullable=True
     )
-    last_strava_sync_at: Mapped[datetime | None] = mapped_column(
+    last_strava_sync_at: Mapped[Optional[datetime]] = mapped_column(
         sa.DateTime(timezone=True), nullable=True
     )
-    last_successful_sync_at: Mapped[datetime | None] = mapped_column(
+    last_successful_sync_at: Mapped[Optional[datetime]] = mapped_column(
         sa.DateTime(timezone=True), nullable=True
     )
     total_synced_count: Mapped[int] = mapped_column(
         sa.Integer, nullable=False, default=0
     )
-    last_error: Mapped[str | None] = mapped_column(sa.String, nullable=True)
-    last_error_at: Mapped[datetime | None] = mapped_column(
+    last_error: Mapped[Optional[str]] = mapped_column(sa.String, nullable=True)
+    last_error_at: Mapped[Optional[datetime]] = mapped_column(
         sa.DateTime(timezone=True), nullable=True
     )
 
@@ -125,7 +125,7 @@ class SyncRule(Base):
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True),
         nullable=False,
-        default=lambda: datetime.now(UTC),
+        default=lambda: datetime.now(timezone.utc),
     )
 
     # Relationships
@@ -142,7 +142,7 @@ class JobAuditLog(Base):
     )
     job_id: Mapped[str] = mapped_column(sa.String, nullable=False)
     job_type: Mapped[str] = mapped_column(sa.String, nullable=False)
-    user_id: Mapped[UUID | None] = mapped_column(
+    user_id: Mapped[Optional[UUID]] = mapped_column(
         sa.UUID(as_uuid=True),
         sa.ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
@@ -155,12 +155,12 @@ class JobAuditLog(Base):
         nullable=False,
         index=True,
     )
-    started_at: Mapped[datetime | None] = mapped_column(
+    started_at: Mapped[Optional[datetime]] = mapped_column(
         sa.DateTime(timezone=True), nullable=True
     )
-    completed_at: Mapped[datetime | None] = mapped_column(
+    completed_at: Mapped[Optional[datetime]] = mapped_column(
         sa.DateTime(timezone=True), nullable=True
     )
-    error_message: Mapped[str | None] = mapped_column(sa.String, nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(sa.String, nullable=True)
     retry_count: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
-    payload: Mapped[dict | None] = mapped_column(sa.JSON, nullable=True)
+    payload: Mapped[Optional[dict]] = mapped_column(sa.JSON, nullable=True)

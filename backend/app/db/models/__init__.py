@@ -1,3 +1,4 @@
+from __future__ import annotations
 from app.db.models.user import User, StravaApp, StravaToken
 from app.db.models.subscription import Subscription, ApiKey, WebhookSubscription, NotificationSettings, LicenseCache
 from app.db.models.sync import SyncedActivity, UserSyncState, SyncRule, JobAuditLog

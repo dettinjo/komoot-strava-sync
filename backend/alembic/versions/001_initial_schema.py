@@ -1,12 +1,14 @@
-"""Initial schema
+from __future__ import annotations
+"""Initial schema aligned with the current SQLAlchemy models.
 
 Revision ID: 001
 Revises:
 Create Date: 2026-04-17 00:00:00.000000
-
 """
+
 from typing import Sequence, Union
 
+import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
@@ -17,255 +19,318 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Enable pgcrypto for gen_random_uuid()
     op.execute('CREATE EXTENSION IF NOT EXISTS "pgcrypto"')
 
-    # -------------------------------------------------------------------------
-    # strava_apps — shared Strava OAuth app credentials (supports multi-app)
-    # -------------------------------------------------------------------------
-    op.execute("""
-        CREATE TABLE strava_apps (
-            id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            client_id   TEXT NOT NULL UNIQUE,
-            client_secret_enc BYTEA NOT NULL,
-            webhook_verify_token TEXT,
-            webhook_subscription_id BIGINT,
-            created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-            updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
-        )
-    """)
+    op.create_table(
+        "strava_apps",
+        sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
+        sa.Column("client_id", sa.String(), nullable=False, unique=True),
+        sa.Column("client_secret", sa.LargeBinary(), nullable=False),
+        sa.Column("display_name", sa.String(), nullable=False),
+        sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column("daily_requests", sa.Integer(), nullable=False, server_default=sa.text("0")),
+        sa.Column("daily_reset_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+    )
 
-    # -------------------------------------------------------------------------
-    # users
-    # -------------------------------------------------------------------------
-    op.execute("""
-        CREATE TABLE users (
-            id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            email               TEXT UNIQUE,
-            strava_athlete_id   BIGINT UNIQUE,
-            komoot_user_id      TEXT,
-            komoot_email_enc    BYTEA,
-            komoot_password_enc BYTEA,
-            is_active           BOOLEAN NOT NULL DEFAULT TRUE,
-            created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
-            updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
-        )
-    """)
+    op.create_table(
+        "users",
+        sa.Column("id", sa.UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
+        sa.Column("email", sa.String(), nullable=False, unique=True),
+        sa.Column("email_verified_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("password_hash", sa.String(), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column("last_login_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
+        sa.Column("is_admin", sa.Boolean(), nullable=False, server_default=sa.text("false")),
+        sa.Column("komoot_email_encrypted", sa.LargeBinary(), nullable=True),
+        sa.Column("komoot_password_encrypted", sa.LargeBinary(), nullable=True),
+        sa.Column("komoot_key_version", sa.Integer(), nullable=False, server_default=sa.text("1")),
+        sa.Column("komoot_user_id", sa.String(), nullable=True),
+        sa.Column("komoot_connected_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("komoot_poll_interval_min", sa.Integer(), nullable=False, server_default=sa.text("60")),
+        sa.Column("next_komoot_poll_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("last_komoot_poll_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("sync_komoot_to_strava", sa.Boolean(), nullable=False, server_default=sa.text("true")),
+        sa.Column("sync_strava_to_komoot", sa.Boolean(), nullable=False, server_default=sa.text("false")),
+        sa.Column("hide_from_home_default", sa.Boolean(), nullable=False, server_default=sa.text("true")),
+        sa.Column("timezone", sa.String(), nullable=False, server_default=sa.text("'timezone.utc'")),
+    )
+    op.create_index("ix_users_email", "users", ["email"], unique=True)
 
-    op.execute("CREATE INDEX ix_users_strava_athlete_id ON users (strava_athlete_id)")
-    op.execute("CREATE INDEX ix_users_email ON users (email)")
+    op.create_table(
+        "strava_tokens",
+        sa.Column(
+            "user_id",
+            sa.UUID(as_uuid=True),
+            sa.ForeignKey("users.id", ondelete="CASCADE"),
+            primary_key=True,
+        ),
+        sa.Column(
+            "strava_app_id",
+            sa.Integer(),
+            sa.ForeignKey("strava_apps.id"),
+            nullable=True,
+        ),
+        sa.Column("strava_athlete_id", sa.BigInteger(), nullable=False, unique=True),
+        sa.Column("access_token", sa.LargeBinary(), nullable=False),
+        sa.Column("refresh_token", sa.LargeBinary(), nullable=False),
+        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column(
+            "scope",
+            sa.String(),
+            nullable=False,
+            server_default=sa.text("'activity:write,activity:read_all'"),
+        ),
+        sa.Column("connected_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("last_refreshed_at", sa.DateTime(timezone=True), nullable=True),
+    )
+    op.create_index(
+        "ix_strava_tokens_strava_athlete_id",
+        "strava_tokens",
+        ["strava_athlete_id"],
+        unique=True,
+    )
 
-    # -------------------------------------------------------------------------
-    # strava_tokens — per-user OAuth tokens for Strava
-    # -------------------------------------------------------------------------
-    op.execute("""
-        CREATE TABLE strava_tokens (
-            id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            user_id             UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
-            strava_athlete_id   BIGINT NOT NULL UNIQUE,
-            strava_app_id       UUID REFERENCES strava_apps (id) ON DELETE SET NULL,
-            access_token_enc    BYTEA NOT NULL,
-            refresh_token_enc   BYTEA NOT NULL,
-            expires_at          TIMESTAMPTZ NOT NULL,
-            scope               TEXT,
-            created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
-            updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
-        )
-    """)
+    op.create_table(
+        "subscriptions",
+        sa.Column("id", sa.UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
+        sa.Column(
+            "user_id",
+            sa.UUID(as_uuid=True),
+            sa.ForeignKey("users.id", ondelete="CASCADE"),
+            nullable=False,
+            unique=True,
+        ),
+        sa.Column("stripe_customer_id", sa.String(), nullable=True, unique=True),
+        sa.Column("stripe_subscription_id", sa.String(), nullable=True, unique=True),
+        sa.Column("stripe_price_id", sa.String(), nullable=True),
+        sa.Column("tier", sa.String(), nullable=False, server_default=sa.text("'free'")),
+        sa.Column("status", sa.String(), nullable=False, server_default=sa.text("'active'")),
+        sa.Column("trial_ends_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("current_period_start", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("current_period_end", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("canceled_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("activities_synced_this_period", sa.Integer(), nullable=False, server_default=sa.text("0")),
+        sa.Column("period_reset_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.CheckConstraint("tier IN ('free', 'pro', 'business')", name="ck_subscriptions_tier"),
+        sa.CheckConstraint(
+            "status IN ('active', 'past_due', 'canceled', 'trialing')",
+            name="ck_subscriptions_status",
+        ),
+    )
 
-    op.execute("CREATE INDEX ix_strava_tokens_user_id ON strava_tokens (user_id)")
-    op.execute("CREATE INDEX ix_strava_tokens_strava_athlete_id ON strava_tokens (strava_athlete_id)")
+    op.create_table(
+        "api_keys",
+        sa.Column("id", sa.UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
+        sa.Column(
+            "user_id",
+            sa.UUID(as_uuid=True),
+            sa.ForeignKey("users.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column("key_hash", sa.String(), nullable=False, unique=True),
+        sa.Column("key_prefix", sa.String(), nullable=False),
+        sa.Column("name", sa.String(), nullable=True),
+        sa.Column("last_used_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column("revoked_at", sa.DateTime(timezone=True), nullable=True),
+    )
+    op.create_index("ix_api_keys_user_id", "api_keys", ["user_id"], unique=False)
 
-    # -------------------------------------------------------------------------
-    # subscriptions — billing tier per user
-    # -------------------------------------------------------------------------
-    op.execute("""
-        CREATE TABLE subscriptions (
-            id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            user_id                 UUID NOT NULL UNIQUE REFERENCES users (id) ON DELETE CASCADE,
-            tier                    TEXT NOT NULL DEFAULT 'free',
-            stripe_customer_id      TEXT,
-            stripe_subscription_id  TEXT,
-            current_period_end      TIMESTAMPTZ,
-            cancel_at_period_end    BOOLEAN NOT NULL DEFAULT FALSE,
-            created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
-            updated_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
-            CONSTRAINT subscriptions_tier_check CHECK (tier IN ('free', 'pro', 'business'))
-        )
-    """)
+    op.create_table(
+        "webhook_subscriptions",
+        sa.Column("id", sa.UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
+        sa.Column(
+            "user_id",
+            sa.UUID(as_uuid=True),
+            sa.ForeignKey("users.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column("url", sa.String(), nullable=False),
+        sa.Column("secret", sa.String(), nullable=False),
+        sa.Column("events", sa.JSON(), nullable=False),
+        sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column("last_delivery_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("failure_count", sa.Integer(), nullable=False, server_default=sa.text("0")),
+    )
+    op.create_index(
+        "ix_webhook_subscriptions_user_id",
+        "webhook_subscriptions",
+        ["user_id"],
+        unique=False,
+    )
 
-    op.execute("CREATE INDEX ix_subscriptions_user_id ON subscriptions (user_id)")
-    op.execute("CREATE INDEX ix_subscriptions_stripe_customer_id ON subscriptions (stripe_customer_id)")
+    op.create_table(
+        "notification_settings",
+        sa.Column(
+            "user_id",
+            sa.UUID(as_uuid=True),
+            sa.ForeignKey("users.id", ondelete="CASCADE"),
+            primary_key=True,
+        ),
+        sa.Column("email_on_sync_error", sa.Boolean(), nullable=False, server_default=sa.text("true")),
+        sa.Column("email_on_daily_summary", sa.Boolean(), nullable=False, server_default=sa.text("false")),
+        sa.Column("email_on_conflict", sa.Boolean(), nullable=False, server_default=sa.text("true")),
+        sa.Column("webhook_on_sync", sa.Boolean(), nullable=False, server_default=sa.text("false")),
+    )
 
-    # -------------------------------------------------------------------------
-    # api_keys — Pro+ programmatic access keys
-    # -------------------------------------------------------------------------
-    op.execute("""
-        CREATE TABLE api_keys (
-            id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            user_id     UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
-            key_hash    TEXT NOT NULL UNIQUE,
-            name        TEXT NOT NULL,
-            last_used_at TIMESTAMPTZ,
-            expires_at  TIMESTAMPTZ,
-            is_active   BOOLEAN NOT NULL DEFAULT TRUE,
-            created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
-        )
-    """)
+    op.create_table(
+        "license_cache",
+        sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
+        sa.Column("license_key", sa.String(), nullable=False, unique=True),
+        sa.Column("tier", sa.String(), nullable=False),
+        sa.Column("max_users", sa.Integer(), nullable=False, server_default=sa.text("1")),
+        sa.Column("features", sa.JSON(), nullable=False),
+        sa.Column("issued_to_hash", sa.String(), nullable=True),
+        sa.Column("validated_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("grace_until", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+    )
 
-    op.execute("CREATE INDEX ix_api_keys_user_id ON api_keys (user_id)")
-    op.execute("CREATE INDEX ix_api_keys_key_hash ON api_keys (key_hash)")
+    op.create_table(
+        "synced_activities",
+        sa.Column("id", sa.UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
+        sa.Column(
+            "user_id",
+            sa.UUID(as_uuid=True),
+            sa.ForeignKey("users.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column("komoot_tour_id", sa.String(), nullable=True),
+        sa.Column("strava_activity_id", sa.String(), nullable=True),
+        sa.Column("sync_direction", sa.String(), nullable=False),
+        sa.Column("synced_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column("sync_status", sa.String(), nullable=False, server_default=sa.text("'completed'")),
+        sa.Column("activity_name", sa.String(), nullable=True),
+        sa.Column("sport_type", sa.String(), nullable=True),
+        sa.Column("distance_m", sa.Float(), nullable=True),
+        sa.Column("elevation_up_m", sa.Float(), nullable=True),
+        sa.Column("started_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("duration_seconds", sa.Integer(), nullable=True),
+        sa.Column("conflict_reason", sa.String(), nullable=True),
+        sa.Column("resolved_at", sa.DateTime(timezone=True), nullable=True),
+        sa.CheckConstraint(
+            "sync_direction IN ('komoot_to_strava', 'strava_to_komoot')",
+            name="ck_synced_activities_sync_direction",
+        ),
+        sa.CheckConstraint(
+            "sync_status IN ('pending', 'processing', 'completed', 'failed', 'conflict')",
+            name="ck_synced_activities_sync_status",
+        ),
+        sa.UniqueConstraint("user_id", "komoot_tour_id", name="uq_synced_activities_user_komoot"),
+        sa.UniqueConstraint("user_id", "strava_activity_id", name="uq_synced_activities_user_strava"),
+    )
+    op.create_index("ix_synced_activities_user_id", "synced_activities", ["user_id"], unique=False)
+    op.create_index("ix_synced_activities_synced_at", "synced_activities", ["synced_at"], unique=False)
+    op.create_index(
+        "ix_synced_activities_user_synced_at",
+        "synced_activities",
+        ["user_id", "synced_at"],
+        unique=False,
+    )
 
-    # -------------------------------------------------------------------------
-    # webhook_subscriptions — Strava webhook registrations per app
-    # -------------------------------------------------------------------------
-    op.execute("""
-        CREATE TABLE webhook_subscriptions (
-            id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            strava_app_id   UUID NOT NULL REFERENCES strava_apps (id) ON DELETE CASCADE,
-            subscription_id BIGINT NOT NULL UNIQUE,
-            callback_url    TEXT NOT NULL,
-            created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-            updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
-        )
-    """)
+    op.create_table(
+        "user_sync_state",
+        sa.Column(
+            "user_id",
+            sa.UUID(as_uuid=True),
+            sa.ForeignKey("users.id", ondelete="CASCADE"),
+            primary_key=True,
+        ),
+        sa.Column("last_komoot_sync_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("last_strava_sync_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("last_successful_sync_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("total_synced_count", sa.Integer(), nullable=False, server_default=sa.text("0")),
+        sa.Column("last_error", sa.String(), nullable=True),
+        sa.Column("last_error_at", sa.DateTime(timezone=True), nullable=True),
+    )
 
-    op.execute("CREATE INDEX ix_webhook_subscriptions_strava_app_id ON webhook_subscriptions (strava_app_id)")
+    op.create_table(
+        "sync_rules",
+        sa.Column("id", sa.UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
+        sa.Column(
+            "user_id",
+            sa.UUID(as_uuid=True),
+            sa.ForeignKey("users.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column("name", sa.String(), nullable=False),
+        sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
+        sa.Column("direction", sa.String(), nullable=False),
+        sa.Column("rule_order", sa.Integer(), nullable=False, server_default=sa.text("0")),
+        sa.Column("conditions", sa.JSON(), nullable=False),
+        sa.Column("actions", sa.JSON(), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.CheckConstraint(
+            "direction IN ('komoot_to_strava', 'strava_to_komoot', 'both')",
+            name="ck_sync_rules_direction",
+        ),
+    )
+    op.create_index("ix_sync_rules_user_id", "sync_rules", ["user_id"], unique=False)
+    op.create_index("ix_sync_rules_user_order", "sync_rules", ["user_id", "rule_order"], unique=False)
 
-    # -------------------------------------------------------------------------
-    # notification_settings — per-user notification preferences
-    # -------------------------------------------------------------------------
-    op.execute("""
-        CREATE TABLE notification_settings (
-            id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            user_id             UUID NOT NULL UNIQUE REFERENCES users (id) ON DELETE CASCADE,
-            email_on_sync_error BOOLEAN NOT NULL DEFAULT TRUE,
-            email_on_sync_success BOOLEAN NOT NULL DEFAULT FALSE,
-            created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
-            updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
-        )
-    """)
-
-    # -------------------------------------------------------------------------
-    # synced_activities — record of every activity synced between platforms
-    # -------------------------------------------------------------------------
-    op.execute("""
-        CREATE TABLE synced_activities (
-            id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            user_id             UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
-            komoot_tour_id      TEXT,
-            strava_activity_id  BIGINT,
-            direction           TEXT NOT NULL,
-            status              TEXT NOT NULL DEFAULT 'pending',
-            error_message       TEXT,
-            synced_at           TIMESTAMPTZ,
-            created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
-            updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
-            CONSTRAINT synced_activities_direction_check CHECK (direction IN ('komoot_to_strava', 'strava_to_komoot')),
-            CONSTRAINT synced_activities_status_check CHECK (status IN ('pending', 'success', 'failed', 'skipped')),
-            CONSTRAINT synced_activities_unique_komoot UNIQUE (user_id, komoot_tour_id),
-            CONSTRAINT synced_activities_unique_strava UNIQUE (user_id, strava_activity_id)
-        )
-    """)
-
-    op.execute("CREATE INDEX ix_synced_activities_user_id ON synced_activities (user_id)")
-    op.execute("CREATE INDEX ix_synced_activities_komoot_tour_id ON synced_activities (komoot_tour_id)")
-    op.execute("CREATE INDEX ix_synced_activities_strava_activity_id ON synced_activities (strava_activity_id)")
-    op.execute("CREATE INDEX ix_synced_activities_status ON synced_activities (status)")
-
-    # -------------------------------------------------------------------------
-    # user_sync_state — tracks polling cursors for each user
-    # -------------------------------------------------------------------------
-    op.execute("""
-        CREATE TABLE user_sync_state (
-            id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            user_id                 UUID NOT NULL UNIQUE REFERENCES users (id) ON DELETE CASCADE,
-            last_komoot_tour_id     TEXT,
-            last_komoot_synced_at   TIMESTAMPTZ,
-            next_komoot_poll_at     TIMESTAMPTZ,
-            last_strava_activity_id BIGINT,
-            last_strava_synced_at   TIMESTAMPTZ,
-            created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
-            updated_at              TIMESTAMPTZ NOT NULL DEFAULT now()
-        )
-    """)
-
-    op.execute("CREATE INDEX ix_user_sync_state_user_id ON user_sync_state (user_id)")
-    op.execute("CREATE INDEX ix_user_sync_state_next_komoot_poll_at ON user_sync_state (next_komoot_poll_at)")
-
-    # -------------------------------------------------------------------------
-    # sync_rules — user-defined filters for which activities to sync (Pro+)
-    # -------------------------------------------------------------------------
-    op.execute("""
-        CREATE TABLE sync_rules (
-            id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            user_id     UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
-            name        TEXT NOT NULL,
-            direction   TEXT NOT NULL,
-            rule_type   TEXT NOT NULL,
-            rule_value  TEXT NOT NULL,
-            is_active   BOOLEAN NOT NULL DEFAULT TRUE,
-            created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-            updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-            CONSTRAINT sync_rules_direction_check CHECK (direction IN ('komoot_to_strava', 'strava_to_komoot', 'both')),
-            CONSTRAINT sync_rules_type_check CHECK (rule_type IN ('activity_type', 'min_distance_km', 'max_distance_km', 'sport_type', 'exclude_tag'))
-        )
-    """)
-
-    op.execute("CREATE INDEX ix_sync_rules_user_id ON sync_rules (user_id)")
-
-    # -------------------------------------------------------------------------
-    # job_audit_log — append-only log of background job executions
-    # -------------------------------------------------------------------------
-    op.execute("""
-        CREATE TABLE job_audit_log (
-            id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            user_id     UUID REFERENCES users (id) ON DELETE SET NULL,
-            job_name    TEXT NOT NULL,
-            status      TEXT NOT NULL,
-            detail      JSONB,
-            duration_ms INTEGER,
-            created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-            CONSTRAINT job_audit_log_status_check CHECK (status IN ('started', 'success', 'failed', 'skipped'))
-        )
-    """)
-
-    op.execute("CREATE INDEX ix_job_audit_log_user_id ON job_audit_log (user_id)")
-    op.execute("CREATE INDEX ix_job_audit_log_job_name ON job_audit_log (job_name)")
-    op.execute("CREATE INDEX ix_job_audit_log_created_at ON job_audit_log (created_at)")
-
-    # -------------------------------------------------------------------------
-    # license_cache — self-hosted license validation cache
-    # -------------------------------------------------------------------------
-    op.execute("""
-        CREATE TABLE license_cache (
-            id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            license_key     TEXT NOT NULL UNIQUE,
-            tier            TEXT NOT NULL,
-            valid_until     TIMESTAMPTZ NOT NULL,
-            last_checked_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-            raw_payload     JSONB,
-            created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-            updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-            CONSTRAINT license_cache_tier_check CHECK (tier IN ('free', 'pro', 'business'))
-        )
-    """)
-
-    op.execute("CREATE INDEX ix_license_cache_license_key ON license_cache (license_key)")
-    op.execute("CREATE INDEX ix_license_cache_valid_until ON license_cache (valid_until)")
+    op.create_table(
+        "job_audit_log",
+        sa.Column("id", sa.UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
+        sa.Column("job_id", sa.String(), nullable=False),
+        sa.Column("job_type", sa.String(), nullable=False),
+        sa.Column(
+            "user_id",
+            sa.UUID(as_uuid=True),
+            sa.ForeignKey("users.id", ondelete="SET NULL"),
+            nullable=True,
+        ),
+        sa.Column("status", sa.String(), nullable=False, server_default=sa.text("'queued'")),
+        sa.Column("priority", sa.Integer(), nullable=False, server_default=sa.text("5")),
+        sa.Column("enqueued_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("started_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("error_message", sa.String(), nullable=True),
+        sa.Column("retry_count", sa.Integer(), nullable=False, server_default=sa.text("0")),
+        sa.Column("payload", sa.JSON(), nullable=True),
+    )
+    op.create_index("ix_job_audit_log_user_id", "job_audit_log", ["user_id"], unique=False)
+    op.create_index("ix_job_audit_log_enqueued_at", "job_audit_log", ["enqueued_at"], unique=False)
 
 
 def downgrade() -> None:
-    op.execute("DROP TABLE IF EXISTS license_cache CASCADE")
-    op.execute("DROP TABLE IF EXISTS job_audit_log CASCADE")
-    op.execute("DROP TABLE IF EXISTS sync_rules CASCADE")
-    op.execute("DROP TABLE IF EXISTS user_sync_state CASCADE")
-    op.execute("DROP TABLE IF EXISTS synced_activities CASCADE")
-    op.execute("DROP TABLE IF EXISTS notification_settings CASCADE")
-    op.execute("DROP TABLE IF EXISTS webhook_subscriptions CASCADE")
-    op.execute("DROP TABLE IF EXISTS api_keys CASCADE")
-    op.execute("DROP TABLE IF EXISTS subscriptions CASCADE")
-    op.execute("DROP TABLE IF EXISTS strava_tokens CASCADE")
-    op.execute("DROP TABLE IF EXISTS users CASCADE")
-    op.execute("DROP TABLE IF EXISTS strava_apps CASCADE")
-    op.execute('DROP EXTENSION IF EXISTS "pgcrypto"')
+    op.drop_index("ix_job_audit_log_enqueued_at", table_name="job_audit_log")
+    op.drop_index("ix_job_audit_log_user_id", table_name="job_audit_log")
+    op.drop_table("job_audit_log")
+
+    op.drop_index("ix_sync_rules_user_order", table_name="sync_rules")
+    op.drop_index("ix_sync_rules_user_id", table_name="sync_rules")
+    op.drop_table("sync_rules")
+
+    op.drop_table("user_sync_state")
+
+    op.drop_index("ix_synced_activities_user_synced_at", table_name="synced_activities")
+    op.drop_index("ix_synced_activities_synced_at", table_name="synced_activities")
+    op.drop_index("ix_synced_activities_user_id", table_name="synced_activities")
+    op.drop_table("synced_activities")
+
+    op.drop_table("license_cache")
+    op.drop_table("notification_settings")
+
+    op.drop_index("ix_webhook_subscriptions_user_id", table_name="webhook_subscriptions")
+    op.drop_table("webhook_subscriptions")
+
+    op.drop_index("ix_api_keys_user_id", table_name="api_keys")
+    op.drop_table("api_keys")
+
+    op.drop_table("subscriptions")
+
+    op.drop_index("ix_strava_tokens_strava_athlete_id", table_name="strava_tokens")
+    op.drop_table("strava_tokens")
+
+    op.drop_index("ix_users_email", table_name="users")
+    op.drop_table("users")
+
+    op.drop_table("strava_apps")

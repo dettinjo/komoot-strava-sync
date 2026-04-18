@@ -1,3 +1,4 @@
+from __future__ import annotations
 from collections.abc import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import (
@@ -8,12 +9,15 @@ from sqlalchemy.ext.asyncio import (
 
 from app.core.config import settings
 
-engine = create_async_engine(
-    settings.DATABASE_URL,
-    pool_pre_ping=True,
-    pool_size=10,
-    max_overflow=20,
-)
+_db_url = settings.DATABASE_URL
+_engine_kwargs: dict = {"pool_pre_ping": True}
+
+# SQLite (used in tests) does not support pool_size / max_overflow
+if not _db_url.startswith("sqlite"):
+    _engine_kwargs["pool_size"] = 10
+    _engine_kwargs["max_overflow"] = 20
+
+engine = create_async_engine(_db_url, **_engine_kwargs)
 
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 

@@ -63,7 +63,7 @@ Both modes can run the `/frontend` Next.js dashboard (not yet started). A self-h
 - Health check HTTP server on :8080 for Docker
 - DockerHub CI/CD via GitHub Actions
 
-### `/backend` — SaaS Backend 🚧 Scaffold Only
+### `/backend` — SaaS Backend 🚧 Partially Implemented, Docs Need Validation
 
 **Implemented (scaffold):**
 - FastAPI app factory with async lifespan (Redis pool init)
@@ -143,6 +143,8 @@ See `backend/app/db/models/` — all tables are defined:
 - **All Strava calls MUST route through `RateLimitGuard`** (`backend/app/core/rate_limit.py`)
 - **Free tier suspension**: When daily budget > 800, free-tier sync jobs are skipped (150 calls reserved for Pro users)
 - **Webhook**: 1 push subscription per Strava app → all athlete events → route by `owner_id` → `strava_tokens.strava_athlete_id`
+- **Token refresh**: implemented in worker paths before Strava API calls; auth callback now stores Strava tokens encrypted with Fernet
+- **Initial migration**: rewritten to track the current ORM model layout much more closely; next step is validating it against a real clean PostgreSQL database
 - **Visibility**: Cannot set `visibility='only_me'` via API. Only `hide_from_home=true` is available — document this limitation clearly for users.
 - **Upload**: GPX only. `external_id=komoot_{tour_id}` prevents Strava-side duplicates automatically.
 - **Terms**: Compliant — third-party integrations are explicitly allowed.
@@ -197,34 +199,34 @@ Self-hosters provide their own Strava API credentials (bypassing shared rate lim
 
 ```
 auth.py
-  POST   /auth/register                — email/password signup
-  POST   /auth/login                   — return JWT
-  POST   /auth/refresh                 — refresh JWT
+  POST   /auth/register                — email/password signup  ✅
+  POST   /auth/login                   — return JWT  ✅
+  POST   /auth/refresh                 — refresh JWT  ✅
   GET    /auth/strava/connect          — redirect to Strava OAuth
   GET    /auth/strava/callback         — exchange code, store encrypted token
-  DELETE /auth/strava/disconnect       — remove Strava connection
+  DELETE /auth/strava/disconnect       — remove Strava connection  ✅
   POST   /auth/komoot/connect          — store encrypted Komoot credentials
-  DELETE /auth/komoot/disconnect
+  DELETE /auth/komoot/disconnect       ✅
 
 sync.py
-  GET    /sync/status                  — UserSyncState + last activity
-  POST   /sync/trigger                 — manual sync (enqueue ARQ job)
+  GET    /sync/status                  — UserSyncState + last activity  ✅
+  POST   /sync/trigger                 — manual sync (enqueue ARQ job)  ✅
 
 activities.py
-  GET    /activities                   — paginated list (user-scoped)
-  GET    /activities/{id}             — activity detail
-  GET    /activities/{id}/gpx         — download GPX
+  GET    /activities                   — paginated list (user-scoped)  ✅
+  GET    /activities/{id}             — activity detail  ✅
+  GET    /activities/{id}/gpx         — download GPX  ✅
 
 rules.py  (Pro+)
-  GET    /rules                        — list sync rules
-  POST   /rules                        — create rule
-  PUT    /rules/{id}                   — update rule
-  DELETE /rules/{id}                   — delete rule
+  GET    /rules                        — list sync rules  ✅
+  POST   /rules                        — create rule  ✅
+  PUT    /rules/{id}                   — update rule  ✅
+  DELETE /rules/{id}                   — delete rule  ✅
 
 billing.py
-  GET    /billing/subscription         — current subscription info
-  POST   /billing/checkout             — Stripe checkout session
-  POST   /billing/portal              — Stripe customer portal session
+  GET    /billing/subscription         — current subscription info  ✅
+  POST   /billing/checkout             — Stripe checkout session  ✅
+  POST   /billing/portal              — Stripe customer portal session  ✅
 
 webhooks.py
   GET    /webhooks/strava              — Strava webhook validation (hub.challenge)
@@ -232,9 +234,9 @@ webhooks.py
   POST   /webhooks/stripe             — Stripe event handler
 
 api_keys.py  (Pro+)
-  GET    /api-keys                     — list API keys
-  POST   /api-keys                     — create key (returns raw key once)
-  DELETE /api-keys/{id}               — revoke key
+  GET    /api-keys                     — list API keys  ✅
+  POST   /api-keys                     — create key (returns raw key once)  ✅
+  DELETE /api-keys/{id}               — revoke key  ✅
 ```
 
 ---
@@ -284,9 +286,13 @@ Read these files in order before writing any code:
 
 1. **This file** (`PROJECT.md`) — goals, status, decisions
 2. `backend/CLAUDE.md` — compact backend reference with patterns, DB conventions, code templates
-3. `backend/.env.example` — all environment variables
-4. `backend/app/db/models/` — actual schema (3 files)
-5. `backend/app/api/deps.py` — auth dependencies pattern
+3. `AI_HANDOFF.md` — the most current handoff state and recent fixes
+4. `CODEX.md` — Codex-specific workflow guardrails
+5. `backend/.env.example` — all environment variables, if present in your branch
+6. `backend/app/db/models/` — actual schema (3 files)
+7. `backend/app/api/deps.py` — auth dependencies pattern
+
+Important: `PROJECT.md`, `AI_HANDOFF.md`, and the actual code may diverge. Treat the code as source of truth when they conflict.
 
 ### Key Patterns
 

@@ -4,195 +4,116 @@
   <img src="img/logo.webp" alt="komoot-strava-sync logo" width="300" />
 </p>
 
-A self-hosted service that automatically syncs your completed **Komoot** activities to **Strava** — including the full GPX track, activity name, and description. Designed to run as a Docker container in [Coolify](https://coolify.io/) or any other Docker host.
+Komoot to Strava sync project with an in-progress multi-tenant backend in `backend/` and the older standalone implementation preserved in `legacy/`.
 
----
+## Current State
 
-## How it works
+- `backend/`: active FastAPI + PostgreSQL + Redis + ARQ codebase
+- `legacy/`: old single-user implementation kept for reference
+- `frontend/`: not started yet
 
-1. Every N minutes (default: 30) the service fetches your recently recorded Komoot tours.
-2. For each tour not yet synced it downloads the GPX file from Komoot and uploads it to Strava.
-3. The created Strava activity uses the same name, description, and sport type as the Komoot tour.
-4. The activity is hidden from your followers' home feed (`hide_from_home=true`).
-1. A local SQLite database tracks which tours have been synced so duplicates are never created.
+The backend now has working API routes, jobs, tests, and a verified initial Alembic migration, but the product is still under active cleanup and completion.
 
----
+## What Is Verified
 
-## Limitations & Synced Data
+- `cd backend && python -m pytest tests/ -v` passes
+- `backend/alembic/versions/001_initial_schema.py` applies successfully to a clean PostgreSQL 16 database
+- Strava tokens are stored encrypted and refreshed in worker paths before use
+- Strava webhook events resolve users through `strava_tokens.strava_athlete_id`
 
-**What is synced:**
-- Tour name and description
-- Mapped sport type
-- Geospatial route (GPS track)
-- Distance and elevation data
-- Timestamps (start and end times)
+## Quick Start
 
-**What is NOT synced (and cannot be synced):**
-- Heart rate, power, and cadence data (Komoot's GPX exports do not include sensor metrics).
-- Photos, media, highlights, or comments.
-- Custom waypoints (they are baked into the route but don't appear as distinct points of interest in Strava).
+### 1. Create an env file
 
-Additionally, this setup relies on a **one-way sync** (Komoot → Strava). Recorded Strava activities are not synced back to Komoot.
-
----
-
-## Privacy notice — important
-
-**The Strava API does not support setting activity visibility to "Only You" programmatically.**
-
-To ensure synced activities are only visible to you:
-
-1. Open **Strava → Settings → Privacy Controls**
-2. Set **Activities** to **"Only You"**
-3. All API-uploaded activities will automatically inherit this setting
-
-After reviewing each activity you can change its visibility to "Followers" or "Everyone" directly in the Strava app.
-
----
-
-## Setup
-
-### Prerequisites
-
-- Docker + Docker Compose (or Coolify)
-- A **Strava API application** — create one at <https://www.strava.com/settings/api>. If your Strava interface is in another language (e.g., German), here is how to fill out the form:
-
-  | Field (German / English) | What to enter |
-  |---|---|
-  | Anwendungsname / Application Name | `Komoot Sync` (or anything you like) |
-  | Kategorie / Category | `Other` |
-  | Club / Club | *(leave empty)* |
-  | Website / Website | `http://localhost` |
-  | Anwendungsbeschreibung / Application Description | `Syncs Komoot activities to Strava` |
-  | Callback-Domain zur Autorisierung / Authorization Callback Domain | `localhost` |
-
-  - *Note: Required auth scopes (`activity:write,activity:read_all`) are requested automatically during the token generation.*
-- Your **Komoot user ID** — visible in your profile URL:
-  `https://www.komoot.com/user/123456789` → ID is `123456789`
-
-### Step 1 — Configure environment
+For backend development:
 
 ```bash
-cp .env.template .env
-# Edit .env and fill in KOMOOT_EMAIL, KOMOOT_PASSWORD, KOMOOT_USER_ID,
-# STRAVA_CLIENT_ID, and STRAVA_CLIENT_SECRET
+cp .env.saas.template .env.saas
 ```
 
-### Step 2 — Get Strava OAuth tokens (one-time, run on your local machine)
+For self-hosted-style backend runs:
 
 ```bash
-pip install requests          # only needed for the helper script
-python scripts/get_token.py
+cp .env.selfhosted.template .env.selfhosted
 ```
 
-The script opens a browser window for Strava authorization. After you approve, it prints three lines — paste them into your `.env`:
+Fill in at least:
 
-```
-STRAVA_ACCESS_TOKEN=<long token>
-STRAVA_REFRESH_TOKEN=<long token>
-STRAVA_TOKEN_EXPIRES_AT=<unix timestamp>
-```
+- `DATABASE_URL`
+- `REDIS_URL`
+- `SECRET_KEY`
+- `KOMOOT_ENCRYPTION_KEY`
+- `STRAVA_CLIENT_ID`
+- `STRAVA_CLIENT_SECRET`
 
-The service refreshes the access token automatically from then on.
-
-### Step 3 — Start the service
+### 2. Start the backend stack
 
 ```bash
-mkdir -p data
-docker compose up -d
-docker compose logs -f
+make dev
+make dev-logs
 ```
 
-On first startup the service syncs the last `INITIAL_SYNC_DAYS` (default: 30) days of activities, then polls every `SYNC_INTERVAL_MINUTES` (default: 30) minutes.
+This starts:
 
----
+- `db`
+- `redis`
+- `api`
+- `worker`
 
-## Deploying on Coolify
+The current compose setup is backend-only. There is no frontend service in the repo yet.
+`make dev` uses `docker compose --env-file .env.saas`, so it does not depend on the legacy root `.env`.
 
-1. Push this repository to GitHub/GitLab.
-2. In Coolify create a new **Docker Compose** service pointing at the repo.
-3. Mount `./data` as a persistent volume to `/data`.
-4. Add all env vars from `.env` in the Coolify environment settings.
-5. Deploy — the service exposes port 8080 strictly for health checks so Coolify correctly displays its health status! No other ports need to be exposed to the public internet.
+### 3. Run checks
 
----
+```bash
+make check
+```
 
-## Rebuilding the Database from Strava
+## Useful Commands
 
-If you move to a new server or lose your `data/sync.db` file, the service would normally attempt to re-upload all your past Komoot activities. To prevent duplicates, you can rebuild your database perfectly by scanning your Strava history!
+```bash
+make status
+make dev
+make dev-stop
+make dev-logs
+make test
+make lint
+make check
+make migrate
+```
 
-**How it works**: Every upload made by this tool attaches a hidden tag (`external_id=komoot_TOUR_ID`). We can scan Strava for this tag and re-populate the local database.
+## Architecture Notes
 
-To recover your missing connections:
-1. Open a terminal in your environment (for Coolify, go to the **Terminal** tab of your app).
-2. Run the recovery script:
-   ```bash
-   python scripts/rebuild_db.py
-   ```
-3. The script will safely reverse-engineer your database history straight from Strava, preventing duplicate uploads on the next sync!
+### Backend
 
----
+- FastAPI async API
+- SQLAlchemy 2 async ORM
+- PostgreSQL
+- Redis + ARQ workers
+- Strava calls guarded by `RateLimitGuard`
+- Komoot credentials and Strava tokens encrypted with Fernet
 
-## Configuration reference
+### Important Constraints
 
-| Variable | Default | Description |
-|---|---|---|
-| `KOMOOT_EMAIL` | — | Komoot account email |
-| `KOMOOT_PASSWORD` | — | Komoot account password |
-| `KOMOOT_USER_ID` | — | Numeric Komoot user ID |
-| `STRAVA_CLIENT_ID` | — | Strava API app Client ID |
-| `STRAVA_CLIENT_SECRET` | — | Strava API app Client Secret |
-| `STRAVA_ACCESS_TOKEN` | — | Initial access token (from `get_token.py`) |
-| `STRAVA_REFRESH_TOKEN` | — | Initial refresh token (from `get_token.py`) |
-| `STRAVA_TOKEN_EXPIRES_AT` | — | Token expiry unix timestamp (from `get_token.py`) |
-| `SYNC_INTERVAL_MINUTES` | `30` | How often to poll Komoot for new activities |
-| `INITIAL_SYNC_DAYS` | `30` | Days to look back on the very first run |
-| `DATA_DIR` | `/data` | Directory for SQLite DB and token file |
+- Komoot uses an unofficial API and may break unexpectedly.
+- Strava rate limits are shared per app and must not be bypassed.
+- Reverse sync from Strava to Komoot is only scaffolded because Komoot has no public upload API.
+- Docs may lag behind code. Prefer `CODEX.md`, `AI_HANDOFF.md`, and the actual backend code when they disagree.
 
----
+## Repository Guides
 
-## Sport type mapping
+- `CODEX.md`: Codex workflow and repo-specific guardrails
+- `CLAUDE.md`: Claude-oriented project instructions
+- `AI_HANDOFF.md`: current implementation truth and recent verification history
+- `PROJECT.md`: broader product and architecture planning
+- `docs/setup_guide.md`: account-linking guidance for the eventual dashboard flow
 
-Komoot sport types are explicitly mapped to their Strava equivalents. The mapping covers all available primary Komoot sport types. The full mapping is maintained in [app/komoot.py](app/komoot.py). Any newly added or unknown Komoot types will gracefully fall back to `Workout` in Strava.
+## Known Gaps
 
-| Komoot | Strava |
-|---|---|
-| touringbicycle, road_cycling | Ride |
-| e_touringbicycle | EBikeRide |
-| mtb, mtb_easy, mtb_advanced | MountainBikeRide |
-| e_mtb | EMountainBikeRide |
-| hike, hiking | Hike |
-| jogging, running | Run |
-| trail_running | TrailRun |
-| walking, nordic_walking | Walk |
-| skitouring, skitour | BackcountrySki |
-| snowshoe | Snowshoe |
-| swimming | Swim |
-| *(anything else)* | Workout |
-
----
-
-## Duplicate prevention
-
-Two independent mechanisms prevent the same activity from appearing twice in Strava:
-
-1. **Local SQLite DB** — `data/sync.db` stores every `komoot_tour_id` that has been synced. Checked before each upload.
-2. **Strava `external_id`** — each upload is tagged `komoot_<tourId>`. Strava rejects duplicate `external_id` values automatically.
-
----
-
-## Troubleshooting
-
-**"Strava tokens are missing"** — Run `python scripts/get_token.py` and add the output to `.env`.
-
-**"Failed to download GPX for tour …"** — Komoot's unofficial API may have changed. Check that your email/password are correct and that the tour is fully recorded (not planned).
-
-**Activity appears with wrong sport type** — The Komoot sport string for your activity isn't in the mapping table. Open `app/komoot.py` and add it to `SPORT_TYPE_MAP`.
-
-**Activity is not private** — Ensure your Strava default activity privacy is set to "Only You" (Settings → Privacy Controls → Activities).
-
----
+- Frontend is not implemented
+- Some planned endpoints are still missing
+- Docs outside the files above may still contain stale references from the earlier standalone layout
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+See [LICENSE](LICENSE).

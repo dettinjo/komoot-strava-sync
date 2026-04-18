@@ -1,3 +1,4 @@
+from __future__ import annotations
 from logging.config import fileConfig
 from sqlalchemy.ext.asyncio import create_async_engine
 from alembic import context

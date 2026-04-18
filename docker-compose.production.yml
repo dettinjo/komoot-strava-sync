@@ -1,4 +1,5 @@
-# Self-hosted deployment — set LICENSE_KEY in .env.selfhosted for premium features
+# Backend-only self-hosted deployment.
+# Copy .env.selfhosted.template to .env.selfhosted before starting.
 
 services:
   api:
