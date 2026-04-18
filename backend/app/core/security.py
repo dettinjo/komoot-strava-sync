@@ -1,26 +1,24 @@
 from __future__ import annotations
+
 import hashlib
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
-from cryptography.fernet import Fernet
-from cryptography.fernet import InvalidToken
+import bcrypt
+from cryptography.fernet import Fernet, InvalidToken
 from fastapi import HTTPException, status
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 
 from app.core.config import settings
 
 ALGORITHM = "HS256"
-
-_pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def create_access_token(subject: str, expires_delta: timedelta | None = None) -> str:
     """Create a signed JWT access token for the given subject (user_id)."""
     if expires_delta is None:
         expires_delta = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    expire = datetime.now(timezone.utc) + expires_delta
+    expire = datetime.now(UTC) + expires_delta
     payload = {"sub": subject, "exp": expire}
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=ALGORITHM)
 
@@ -42,17 +40,17 @@ def verify_access_token(token: str) -> str:
             raise credentials_exception
         return subject
     except JWTError:
-        raise credentials_exception
+        raise credentials_exception from None
 
 
 def hash_password(password: str) -> str:
     """Return a bcrypt hash of the given plaintext password."""
-    return _pwd_context.hash(password)
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
 
 def verify_password(plain: str, hashed: str) -> bool:
     """Return True if *plain* matches the stored bcrypt *hashed* password."""
-    return _pwd_context.verify(plain, hashed)
+    return bcrypt.checkpw(plain.encode(), hashed.encode())
 
 
 def get_fernet() -> Fernet:

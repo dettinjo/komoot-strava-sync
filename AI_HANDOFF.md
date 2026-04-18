@@ -120,6 +120,16 @@ backend/
 - Added `GET /activities/{id}/gpx`, which downloads GPX on demand from Komoot for user-owned synced activities that still have a `komoot_tour_id` and valid stored Komoot credentials.
 - `cd backend && python -m pytest tests/ -v` now passes with GPX download coverage: **20 passed**.
 
+### Recent Fixes (2026-04-18 session 2)
+
+- Replaced `passlib`+`bcrypt` usage with direct `bcrypt` calls (`bcrypt.hashpw`/`bcrypt.checkpw`) in `app/core/security.py`. `passlib` triggers a wrap-bug detection probe with a 72-byte secret that `bcrypt >= 4.0` now rejects with `ValueError`, breaking all password hashing/verification at test time.
+- Fixed `get_current_user` in `deps.py` to cast the JWT subject string to `uuid.UUID` before the SQLAlchemy query (SQLite's `aiosqlite` driver requires a Python UUID object, not a string, when the column is `sa.UUID(as_uuid=True)`).
+- Added `selectinload(User.strava_token)` to the `get_current_user` query so that relationship attributes accessed in route handlers (e.g. `user.strava_token` in `/auth/me` and `/sync/status`) don't trigger async lazy-load failures (`MissingGreenlet`).
+- Changed path parameters in `activities.py`, `rules.py`, and `api_keys.py` from `str` to `uuid.UUID` — FastAPI validates and parses them, and SQLAlchemy receives proper UUID objects directly.
+- Fixed `billing.py`: tier validation (`/checkout`) and Stripe customer check (`/portal`) now happen before the Stripe-key guard, so invalid-tier and no-customer-id requests return 400 even when Stripe is not configured.
+- Added a comprehensive integration test file (`tests/api/test_integration.py`) that runs against a real in-memory SQLite DB (no mocks) with shared `db`, `async_client`, `free_user`, `pro_user`, `free_user_headers`, `pro_user_headers` fixtures in `tests/conftest.py`.
+- `make check` passes: **48 passed, 0 failed**.
+
 ---
 
 ### ✅ Fully Implemented Features

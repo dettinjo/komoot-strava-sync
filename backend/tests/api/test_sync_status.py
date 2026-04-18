@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from httpx import AsyncClient
@@ -26,8 +26,8 @@ async def test_get_sync_status(async_client: AsyncClient):
         user_id=fake_user.id,
         total_synced_count=4,
         last_error="Temporary failure",
-        last_komoot_sync_at=datetime.now(timezone.utc),
-        last_successful_sync_at=datetime.now(timezone.utc),
+        last_komoot_sync_at=datetime.now(UTC),
+        last_successful_sync_at=datetime.now(UTC),
     )
     fake_activity = SyncedActivity(
         id="11111111-1111-1111-1111-111111111111",
@@ -38,7 +38,7 @@ async def test_get_sync_status(async_client: AsyncClient):
         sync_status="completed",
         activity_name="Evening Ride",
         sport_type="Ride",
-        synced_at=datetime.now(timezone.utc),
+        synced_at=datetime.now(UTC),
     )
 
     app.dependency_overrides[deps.get_current_user] = lambda: fake_user

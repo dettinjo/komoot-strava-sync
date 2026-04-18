@@ -1,11 +1,12 @@
 from __future__ import annotations
+
 """End-to-End Live Integration Test using actual Strava and Komoot credentials."""
 
 import asyncio
 import logging
 import os
 import sys
-from datetime import timezone, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 # Fix python path for script execution
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
@@ -18,14 +19,13 @@ os.environ["STRAVA_CLIENT_ID"] = "226500"
 os.environ["STRAVA_CLIENT_SECRET"] = "97eb1224d05fb83e4416c6f0244a2e16f95e1f40"
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 # Import backend modules
 from app.core import security
 from app.db.base import Base
+from app.db.models.sync import SyncedActivity
 from app.db.models.user import StravaApp, StravaToken, User
-from app.db.models.sync import SyncedActivity, UserSyncState
-from app.db.models.subscription import Subscription  # ensures all models loaded
 from app.services.komoot import KomootClient
 from app.services.strava import StravaClient
 from app.services.sync import SyncService
@@ -45,11 +45,11 @@ async def main():
     logger.info("Initializing Live DB Test Environment...")
 
     import uuid
+
     test_user_id = uuid.uuid4()
     test_app_id = 999
-    
+
     async with TestingSessionLocal() as db:
-        
         # 2. Seed Test Architecture
         test_app = StravaApp(
             id=test_app_id,
@@ -58,7 +58,7 @@ async def main():
             display_name="Live Test Env",
         )
         db.add(test_app)
-        
+
         test_user = User(
             id=test_user_id,
             email="j.dettinger@student.vu.nl",
@@ -68,33 +68,34 @@ async def main():
             sync_komoot_to_strava=True,
         )
         db.add(test_user)
-        
+
         test_token = StravaToken(
             user_id=test_user_id,
             strava_app_id=test_app_id,
-            strava_athlete_id=9999999, # Dummy
+            strava_athlete_id=9999999,  # Dummy
             access_token=b"b418e56773811fce52f532cc05790c2387040bbc",
             refresh_token=b"dcf234dfc8ed9e55eb03a583916cd885811e04e7",
-            expires_at=datetime.now(timezone.utc) + timedelta(minutes=60),
-            connected_at=datetime.now(timezone.utc)
+            expires_at=datetime.now(UTC) + timedelta(minutes=60),
+            connected_at=datetime.now(UTC),
         )
         db.add(test_token)
         await db.commit()
-    
+
         logger.info("Data seeded successfully. Instantiating Services...")
 
         # 3. Instantiate Clients
-        # Since we want to limit fetching, we will subclass the KomootClient to limit its results manually
+        # Subclass KomootClient to limit results during live testing
         class LimitedKomootClient(KomootClient):
             async def get_tours(self, since: datetime):
                 # Always fetch exactly 1 tour from the super class to save rates!
                 results = []
                 async for raw in self._iter_tour_pages():
                     # Manually parsing same as komoot.py
-                    from app.services.komoot import _parse_date, _strava_sport, Tour
+                    from app.services.komoot import Tour, _parse_date, _strava_sport
+
                     date = _parse_date(raw["date"])
                     sport = raw.get("sport", "")
-                    
+
                     results.append(
                         Tour(
                             id=str(raw["id"]),
@@ -107,7 +108,7 @@ async def main():
                             elevation_up_m=float(raw.get("elevation_up", 0)),
                         )
                     )
-                    break # STOP AFTER 1 ITERATION (Max 1 Tour fetched!)
+                    break  # STOP AFTER 1 ITERATION (Max 1 Tour fetched!)
                 return results
 
         komoot = LimitedKomootClient(
@@ -116,24 +117,31 @@ async def main():
             user_id="5676414827752",
         )
         strava = StravaClient(access_token="b418e56773811fce52f532cc05790c2387040bbc")
-        
+
         # 4. Trigger Sync
         sync = SyncService(db)
-        
+
         logger.info("Triggering Full Pipeline Synchronization...")
         try:
             await sync.sync_komoot_to_strava(test_user, test_app, komoot, strava)
         except Exception as e:
             logger.error("Sync Engine failed during test execution: %s", e)
-            
+
         # 5. Assertions
         stmt = select(SyncedActivity).where(SyncedActivity.user_id == test_user_id)
         res = await db.execute(stmt)
         activities = res.scalars().all()
-        
+
         logger.info(f"Test Finished. Generated {len(activities)} database rows.")
         for a in activities:
-            logger.info("Status: [%s] | Direction: [%s] | Komoot ID: [%s] | Strava ID: [%s]", a.sync_status, a.sync_direction, a.komoot_tour_id, getattr(a, "strava_activity_id", "N/A"))
+            logger.info(
+                "Status: [%s] | Direction: [%s] | Komoot ID: [%s] | Strava ID: [%s]",
+                a.sync_status,
+                a.sync_direction,
+                a.komoot_tour_id,
+                getattr(a, "strava_activity_id", "N/A"),
+            )
+
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -1,20 +1,16 @@
-from typing import Optional
-from unittest.mock import patch
-
 import pytest
 from httpx import AsyncClient
 
-from app.db.models.user import User
 from app.db.models.sync import SyncRule
+from app.db.models.user import User
 
 
 @pytest.mark.asyncio
 async def test_create_and_list_rules(async_client: AsyncClient):
     """Test generating a new SyncRule and listing them."""
     from app.api import deps
-    from app.main import app
-    
     from app.db.models.subscription import Subscription
+    from app.main import app
 
     fake_user = User(id="00000000-0000-0000-0000-000000000000", is_active=True)
     fake_sub = Subscription(user_id=fake_user.id, tier="pro", status="active")
@@ -33,9 +29,11 @@ async def test_create_and_list_rules(async_client: AsyncClient):
 
         def scalars(self):
             items = self._items
+
             class _S:
                 def all(self):
                     return items
+
             return _S()
 
     class FakeDB:
@@ -61,15 +59,15 @@ async def test_create_and_list_rules(async_client: AsyncClient):
         "direction": "komoot_to_strava",
         "conditions": {"sport": "ebike"},
         "actions": {"sync_to": "None"},
-        "rule_order": 1
+        "rule_order": 1,
     }
-    
+
     response = await async_client.post("/api/v1/rules", json=payload)
-    
+
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "success"
-    
+
     # List rules
     # Manually populate an ID to avoid stringification failures
     mock_db_state[0].id = "11111111-1111-1111-1111-111111111111"
@@ -80,7 +78,7 @@ async def test_create_and_list_rules(async_client: AsyncClient):
     assert list_data["data"][0]["name"] == "Ignore Ebikes"
     assert list_data["data"][0]["direction"] == "komoot_to_strava"
     assert list_data["data"][0]["conditions"] == {"sport": "ebike"}
-    
+
     app.dependency_overrides.clear()
 
 
@@ -88,8 +86,8 @@ async def test_create_and_list_rules(async_client: AsyncClient):
 async def test_update_and_delete_rule(async_client: AsyncClient):
     """Test updating and deleting an existing rule."""
     from app.api import deps
-    from app.main import app
     from app.db.models.subscription import Subscription
+    from app.main import app
 
     fake_user = User(id="00000000-0000-0000-0000-000000000000", is_active=True)
     fake_sub = Subscription(user_id=fake_user.id, tier="pro", status="active")

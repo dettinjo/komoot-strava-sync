@@ -63,36 +63,30 @@ Both modes can run the `/frontend` Next.js dashboard (not yet started). A self-h
 - Health check HTTP server on :8080 for Docker
 - DockerHub CI/CD via GitHub Actions
 
-### `/backend` — SaaS Backend 🚧 Partially Implemented, Docs Need Validation
+### `/backend` — SaaS Backend ✅ Core Complete, Frontend Not Started
 
-**Implemented (scaffold):**
-- FastAPI app factory with async lifespan (Redis pool init)
-- Pydantic Settings for all env vars (`core/config.py`)
-- JWT, Fernet, bcrypt, API key utilities (`core/security.py`)
-- Strava rate limit guard, Redis-backed, per-app, tier-prioritized (`core/rate_limit.py`)
-- Auth dependencies: `get_current_user`, `require_tier`, `get_current_api_key_user` (`api/deps.py`)
-- Full async DB setup: AsyncEngine + AsyncSessionLocal (`db/session.py`)
-- Complete database models (all tables, all columns, relationships, indexes)
+**`make check` passes: 20/20 tests green, ruff lint clean.**
+
+**Implemented and tested:**
+- FastAPI app factory with async lifespan (Redis + ARQ pool)
+- All API v1 routes: auth, sync, activities, rules, billing, webhooks, api_keys
+- `services/komoot.py` — async Komoot client, tour pagination, GPX download
+- `services/strava.py` — async Strava client, upload+poll, token refresh
+- `services/sync.py` — SyncService (Komoot→Strava per user, rule evaluation)
+- `jobs/worker.py` — ARQ WorkerSettings, 5-min cron scheduler
+- `jobs/sync_jobs.py` — `poll_komoot_user`, `process_strava_activity`, `komoot_poll_scheduler`
 - Alembic migration `001_initial_schema.py`
-- Docker Compose variants, pytest fixtures (conftest.py)
-- `backend/CLAUDE.md` — compact AI reference doc
+- 20 pytest tests covering all major routes and the sync engine
+- Makefile with `make check`, `make dev`, `make migrate`, etc.
 
-**Not yet implemented — all empty directories/missing files:**
+**Not yet started:**
 
 | Component | Status |
 |-----------|--------|
-| `backend/app/api/v1/*.py` | ❌ No files — all routes missing |
-| `backend/app/services/komoot.py` | ❌ Async Komoot client |
-| `backend/app/services/strava.py` | ❌ Async Strava client (rate-guarded) |
-| `backend/app/services/sync.py` | ❌ Sync orchestration service |
-| `backend/app/jobs/worker.py` | ❌ ARQ WorkerSettings + cron |
-| `backend/app/jobs/sync_jobs.py` | ❌ `poll_komoot_user`, `komoot_poll_scheduler` |
 | `/frontend` | ❌ Next.js not started |
-| Tests | ❌ conftest.py exists, no test files |
-
-**Structural gaps (fix before writing routes):**
-- `backend/app/api/v1/` directory has no `.py` files at all — `main.py` can't import a router that doesn't exist
-- No `Makefile` for dev workflow
+| Migration validation | ⚠️ Not validated against real PostgreSQL yet |
+| Multi-app Strava pooling | ⚠️ `strava_apps` table exists, logic not implemented |
+| Integration tests (real DB) | ⚠️ All tests mock the DB |
 
 ### Database Models
 
@@ -243,40 +237,24 @@ api_keys.py  (Pro+)
 
 ## Implementation Phases
 
-### Phase 1 — Make Backend Startable
-- [ ] `backend/app/api/v1/__init__.py`
-- [ ] `backend/app/api/v1/router.py` (import all sub-routers)
-- [ ] Stub route files (auth, sync, activities, rules, billing, webhooks, api_keys)
-- [ ] Wire v1 router into `backend/app/main.py`
-- [ ] Verify `docker compose -f docker-compose.saas.yml up` starts (api + db + redis healthy)
-- [ ] `GET /health` returns `{"status": "ok"}`
+### Phase 1 — Make Backend Startable ✅ Done
+### Phase 2 — Auth & Connections ✅ Done
+### Phase 3 — Sync Engine ✅ Done
+### Phase 4 — Activities & Billing ✅ Done
+### Phase 5 — Pro Features ✅ Done (rules, api_keys); Frontend ❌ Not started
 
-### Phase 2 — Auth & Connections
-- [ ] `backend/app/services/strava.py` — async OAuth, token refresh, per-user client
-- [ ] `backend/app/services/komoot.py` — async client (port from `/app/komoot.py`)
-- [ ] `auth.py` routes: register, login, Strava OAuth, Komoot connect
+### Phase 6 — Next: Testing & Hardening
+- [ ] Validate Alembic migration against a real PostgreSQL database (`make migrate`)
+- [ ] Integration tests with a real test DB (pytest + testcontainers or docker-compose.test.yml)
+- [ ] Rate limit guard behavior under load
+- [ ] Multi-app Strava pooling logic (round-robin across `strava_apps` table)
 
-### Phase 3 — Sync Engine
-- [ ] `backend/app/jobs/worker.py` — ARQ WorkerSettings, cron for `komoot_poll_scheduler`
-- [ ] `backend/app/jobs/sync_jobs.py` — `poll_komoot_user`, `komoot_poll_scheduler`
-- [ ] `backend/app/services/sync.py` — SyncService (orchestrates komoot→strava per user)
-- [ ] `sync.py` routes: status, trigger
-
-### Phase 4 — Activities & Billing
-- [ ] `activities.py` routes
-- [ ] `webhooks.py` — Strava push events + Stripe
-- [ ] `billing.py` — Stripe checkout + portal + subscription status
-
-### Phase 5 — Pro Features + Frontend
-- [ ] `rules.py` — sync rules CRUD
-- [ ] `api_keys.py` — API key management
-- [ ] Next.js frontend scaffold (`/frontend`)
-- [ ] License server (minimal service for self-hosted validation)
-
-### Phase 6 — Testing & Hardening
-- [ ] Integration tests (pytest-asyncio, real test DB)
-- [ ] Rate limit behavior under load
-- [ ] Multi-app Strava pooling logic
+### Phase 7 — Frontend
+- [ ] Next.js scaffold (`/frontend`)
+- [ ] Dashboard: connection status, sync history, manual trigger
+- [ ] Settings: Komoot/Strava connect/disconnect, sync prefs
+- [ ] Billing: upgrade/downgrade via Stripe Checkout/Portal
+- [ ] Rules editor (Pro)
 
 ---
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -20,14 +20,14 @@ async def test_get_valid_strava_access_token_refreshes_when_expiring():
         strava_athlete_id=123456,
         access_token=security.encrypt("old_access"),
         refresh_token=security.encrypt("old_refresh"),
-        expires_at=datetime.now(timezone.utc) + timedelta(minutes=2),
-        connected_at=datetime.now(timezone.utc),
+        expires_at=datetime.now(UTC) + timedelta(minutes=2),
+        connected_at=datetime.now(UTC),
     )
 
     refreshed_payload = {
         "access_token": "new_access",
         "refresh_token": "new_refresh",
-        "expires_at": int((datetime.now(timezone.utc) + timedelta(hours=6)).timestamp()),
+        "expires_at": int((datetime.now(UTC) + timedelta(hours=6)).timestamp()),
     }
 
     with patch(

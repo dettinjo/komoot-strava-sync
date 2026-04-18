@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 """Initial schema aligned with the current SQLAlchemy models.
 
 Revision ID: 001
@@ -9,6 +10,7 @@ Create Date: 2026-04-17 00:00:00.000000
 from typing import Sequence, Union
 
 import sqlalchemy as sa
+
 from alembic import op
 
 # revision identifiers, used by Alembic.
@@ -28,19 +30,44 @@ def upgrade() -> None:
         sa.Column("client_secret", sa.LargeBinary(), nullable=False),
         sa.Column("display_name", sa.String(), nullable=False),
         sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
         sa.Column("daily_requests", sa.Integer(), nullable=False, server_default=sa.text("0")),
-        sa.Column("daily_reset_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column(
+            "daily_reset_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
     )
 
     op.create_table(
         "users",
-        sa.Column("id", sa.UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
+        sa.Column(
+            "id",
+            sa.UUID(as_uuid=True),
+            primary_key=True,
+            server_default=sa.text("gen_random_uuid()"),
+        ),
         sa.Column("email", sa.String(), nullable=False, unique=True),
         sa.Column("email_verified_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("password_hash", sa.String(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
         sa.Column("last_login_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
         sa.Column("is_admin", sa.Boolean(), nullable=False, server_default=sa.text("false")),
@@ -49,13 +76,23 @@ def upgrade() -> None:
         sa.Column("komoot_key_version", sa.Integer(), nullable=False, server_default=sa.text("1")),
         sa.Column("komoot_user_id", sa.String(), nullable=True),
         sa.Column("komoot_connected_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("komoot_poll_interval_min", sa.Integer(), nullable=False, server_default=sa.text("60")),
+        sa.Column(
+            "komoot_poll_interval_min", sa.Integer(), nullable=False, server_default=sa.text("60")
+        ),
         sa.Column("next_komoot_poll_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("last_komoot_poll_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("sync_komoot_to_strava", sa.Boolean(), nullable=False, server_default=sa.text("true")),
-        sa.Column("sync_strava_to_komoot", sa.Boolean(), nullable=False, server_default=sa.text("false")),
-        sa.Column("hide_from_home_default", sa.Boolean(), nullable=False, server_default=sa.text("true")),
-        sa.Column("timezone", sa.String(), nullable=False, server_default=sa.text("'timezone.utc'")),
+        sa.Column(
+            "sync_komoot_to_strava", sa.Boolean(), nullable=False, server_default=sa.text("true")
+        ),
+        sa.Column(
+            "sync_strava_to_komoot", sa.Boolean(), nullable=False, server_default=sa.text("false")
+        ),
+        sa.Column(
+            "hide_from_home_default", sa.Boolean(), nullable=False, server_default=sa.text("true")
+        ),
+        sa.Column(
+            "timezone", sa.String(), nullable=False, server_default=sa.text("'timezone.utc'")
+        ),
     )
     op.create_index("ix_users_email", "users", ["email"], unique=True)
 
@@ -95,7 +132,12 @@ def upgrade() -> None:
 
     op.create_table(
         "subscriptions",
-        sa.Column("id", sa.UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
+        sa.Column(
+            "id",
+            sa.UUID(as_uuid=True),
+            primary_key=True,
+            server_default=sa.text("gen_random_uuid()"),
+        ),
         sa.Column(
             "user_id",
             sa.UUID(as_uuid=True),
@@ -112,10 +154,25 @@ def upgrade() -> None:
         sa.Column("current_period_start", sa.DateTime(timezone=True), nullable=True),
         sa.Column("current_period_end", sa.DateTime(timezone=True), nullable=True),
         sa.Column("canceled_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("activities_synced_this_period", sa.Integer(), nullable=False, server_default=sa.text("0")),
+        sa.Column(
+            "activities_synced_this_period",
+            sa.Integer(),
+            nullable=False,
+            server_default=sa.text("0"),
+        ),
         sa.Column("period_reset_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
         sa.CheckConstraint("tier IN ('free', 'pro', 'business')", name="ck_subscriptions_tier"),
         sa.CheckConstraint(
             "status IN ('active', 'past_due', 'canceled', 'trialing')",
@@ -125,7 +182,12 @@ def upgrade() -> None:
 
     op.create_table(
         "api_keys",
-        sa.Column("id", sa.UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
+        sa.Column(
+            "id",
+            sa.UUID(as_uuid=True),
+            primary_key=True,
+            server_default=sa.text("gen_random_uuid()"),
+        ),
         sa.Column(
             "user_id",
             sa.UUID(as_uuid=True),
@@ -137,14 +199,24 @@ def upgrade() -> None:
         sa.Column("name", sa.String(), nullable=True),
         sa.Column("last_used_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("expires_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
         sa.Column("revoked_at", sa.DateTime(timezone=True), nullable=True),
     )
     op.create_index("ix_api_keys_user_id", "api_keys", ["user_id"], unique=False)
 
     op.create_table(
         "webhook_subscriptions",
-        sa.Column("id", sa.UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
+        sa.Column(
+            "id",
+            sa.UUID(as_uuid=True),
+            primary_key=True,
+            server_default=sa.text("gen_random_uuid()"),
+        ),
         sa.Column(
             "user_id",
             sa.UUID(as_uuid=True),
@@ -155,7 +227,12 @@ def upgrade() -> None:
         sa.Column("secret", sa.String(), nullable=False),
         sa.Column("events", sa.JSON(), nullable=False),
         sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
         sa.Column("last_delivery_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("failure_count", sa.Integer(), nullable=False, server_default=sa.text("0")),
     )
@@ -174,9 +251,15 @@ def upgrade() -> None:
             sa.ForeignKey("users.id", ondelete="CASCADE"),
             primary_key=True,
         ),
-        sa.Column("email_on_sync_error", sa.Boolean(), nullable=False, server_default=sa.text("true")),
-        sa.Column("email_on_daily_summary", sa.Boolean(), nullable=False, server_default=sa.text("false")),
-        sa.Column("email_on_conflict", sa.Boolean(), nullable=False, server_default=sa.text("true")),
+        sa.Column(
+            "email_on_sync_error", sa.Boolean(), nullable=False, server_default=sa.text("true")
+        ),
+        sa.Column(
+            "email_on_daily_summary", sa.Boolean(), nullable=False, server_default=sa.text("false")
+        ),
+        sa.Column(
+            "email_on_conflict", sa.Boolean(), nullable=False, server_default=sa.text("true")
+        ),
         sa.Column("webhook_on_sync", sa.Boolean(), nullable=False, server_default=sa.text("false")),
     )
 
@@ -191,12 +274,22 @@ def upgrade() -> None:
         sa.Column("validated_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("expires_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("grace_until", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
     )
 
     op.create_table(
         "synced_activities",
-        sa.Column("id", sa.UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
+        sa.Column(
+            "id",
+            sa.UUID(as_uuid=True),
+            primary_key=True,
+            server_default=sa.text("gen_random_uuid()"),
+        ),
         sa.Column(
             "user_id",
             sa.UUID(as_uuid=True),
@@ -206,8 +299,12 @@ def upgrade() -> None:
         sa.Column("komoot_tour_id", sa.String(), nullable=True),
         sa.Column("strava_activity_id", sa.String(), nullable=True),
         sa.Column("sync_direction", sa.String(), nullable=False),
-        sa.Column("synced_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
-        sa.Column("sync_status", sa.String(), nullable=False, server_default=sa.text("'completed'")),
+        sa.Column(
+            "synced_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")
+        ),
+        sa.Column(
+            "sync_status", sa.String(), nullable=False, server_default=sa.text("'completed'")
+        ),
         sa.Column("activity_name", sa.String(), nullable=True),
         sa.Column("sport_type", sa.String(), nullable=True),
         sa.Column("distance_m", sa.Float(), nullable=True),
@@ -225,10 +322,14 @@ def upgrade() -> None:
             name="ck_synced_activities_sync_status",
         ),
         sa.UniqueConstraint("user_id", "komoot_tour_id", name="uq_synced_activities_user_komoot"),
-        sa.UniqueConstraint("user_id", "strava_activity_id", name="uq_synced_activities_user_strava"),
+        sa.UniqueConstraint(
+            "user_id", "strava_activity_id", name="uq_synced_activities_user_strava"
+        ),
     )
     op.create_index("ix_synced_activities_user_id", "synced_activities", ["user_id"], unique=False)
-    op.create_index("ix_synced_activities_synced_at", "synced_activities", ["synced_at"], unique=False)
+    op.create_index(
+        "ix_synced_activities_synced_at", "synced_activities", ["synced_at"], unique=False
+    )
     op.create_index(
         "ix_synced_activities_user_synced_at",
         "synced_activities",
@@ -254,7 +355,12 @@ def upgrade() -> None:
 
     op.create_table(
         "sync_rules",
-        sa.Column("id", sa.UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
+        sa.Column(
+            "id",
+            sa.UUID(as_uuid=True),
+            primary_key=True,
+            server_default=sa.text("gen_random_uuid()"),
+        ),
         sa.Column(
             "user_id",
             sa.UUID(as_uuid=True),
@@ -267,18 +373,30 @@ def upgrade() -> None:
         sa.Column("rule_order", sa.Integer(), nullable=False, server_default=sa.text("0")),
         sa.Column("conditions", sa.JSON(), nullable=False),
         sa.Column("actions", sa.JSON(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
         sa.CheckConstraint(
             "direction IN ('komoot_to_strava', 'strava_to_komoot', 'both')",
             name="ck_sync_rules_direction",
         ),
     )
     op.create_index("ix_sync_rules_user_id", "sync_rules", ["user_id"], unique=False)
-    op.create_index("ix_sync_rules_user_order", "sync_rules", ["user_id", "rule_order"], unique=False)
+    op.create_index(
+        "ix_sync_rules_user_order", "sync_rules", ["user_id", "rule_order"], unique=False
+    )
 
     op.create_table(
         "job_audit_log",
-        sa.Column("id", sa.UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
+        sa.Column(
+            "id",
+            sa.UUID(as_uuid=True),
+            primary_key=True,
+            server_default=sa.text("gen_random_uuid()"),
+        ),
         sa.Column("job_id", sa.String(), nullable=False),
         sa.Column("job_type", sa.String(), nullable=False),
         sa.Column(

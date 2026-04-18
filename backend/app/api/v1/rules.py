@@ -1,7 +1,7 @@
 from __future__ import annotations
-"""API endpoints for Pro+ users managing sync filtering rules."""
 
 from typing import Any
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -9,8 +9,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api import deps
+from app.db.models.subscription import Subscription
 from app.db.models.sync import SyncRule
 from app.db.models.user import User
+
+_RULE_LIMIT: dict[str, int] = {"free": 1, "pro": 5, "lifetime": 5, "business": 5}
 
 router = APIRouter(tags=["rules"])
 
@@ -27,15 +30,10 @@ class RuleCreate(BaseModel):
 @router.get("")
 async def list_rules(
     user: User = Depends(deps.get_current_user),
-    _tier: None = Depends(deps.require_tier("pro")),
     db: AsyncSession = Depends(deps.get_db),
 ) -> dict[str, Any]:
     """List all sync rules for the current user."""
-    stmt = (
-        select(SyncRule)
-        .where(SyncRule.user_id == user.id)
-        .order_by(SyncRule.rule_order.asc())
-    )
+    stmt = select(SyncRule).where(SyncRule.user_id == user.id).order_by(SyncRule.rule_order.asc())
     result = await db.execute(stmt)
     rules = result.scalars().all()
 
@@ -55,23 +53,35 @@ async def list_rules(
     }
 
 
+async def _get_tier(user: User, db: AsyncSession) -> str:
+    sub = (
+        await db.execute(select(Subscription).where(Subscription.user_id == user.id))
+    ).scalar_one_or_none()
+    return sub.tier if sub else "free"
+
+
 @router.post("")
 async def create_rule(
     payload: RuleCreate,
     user: User = Depends(deps.get_current_user),
-    _tier: None = Depends(deps.require_tier("pro")),
     db: AsyncSession = Depends(deps.get_db),
 ) -> dict[str, Any]:
     """Create a new sync filtering rule."""
     if payload.direction not in ("komoot_to_strava", "strava_to_komoot", "both"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid direction.")
-        
-    stmt = select(SyncRule).where(SyncRule.user_id == user.id)
-    result = await db.execute(stmt)
-    existing_rules = result.scalars().all()
-    
-    if len(existing_rules) >= 15:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Maximum of 15 rules allowed.")
+
+    tier = await _get_tier(user, db)
+    limit = _RULE_LIMIT.get(tier, 1)
+
+    existing_count = len(
+        (await db.execute(select(SyncRule).where(SyncRule.user_id == user.id))).scalars().all()
+    )
+    if existing_count >= limit:
+        noun = "rule" if limit == 1 else "rules"
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Your plan allows up to {limit} {noun}. Upgrade to Pro for more.",
+        )
 
     new_rule = SyncRule(
         user_id=user.id,
@@ -90,10 +100,9 @@ async def create_rule(
 
 @router.put("/{rule_id}")
 async def update_rule(
-    rule_id: str,
+    rule_id: UUID,
     payload: RuleCreate,
     user: User = Depends(deps.get_current_user),
-    _tier: None = Depends(deps.require_tier("pro")),
     db: AsyncSession = Depends(deps.get_db),
 ) -> dict[str, Any]:
     """Update an existing sync rule."""
@@ -120,9 +129,8 @@ async def update_rule(
 
 @router.delete("/{rule_id}")
 async def delete_rule(
-    rule_id: str,
+    rule_id: UUID,
     user: User = Depends(deps.get_current_user),
-    _tier: None = Depends(deps.require_tier("pro")),
     db: AsyncSession = Depends(deps.get_db),
 ) -> dict[str, str]:
     """Delete an existing sync rule."""

@@ -12,8 +12,8 @@ from app.db.models.user import User
 async def test_register_login_and_refresh(async_client: AsyncClient):
     """Test account registration, login, and token refresh."""
     from app.api import deps
-    from app.main import app
     from app.db.models.subscription import Subscription
+    from app.main import app
 
     db_state: dict[str, object | None] = {
         "user": None,
@@ -46,8 +46,9 @@ async def test_register_login_and_refresh(async_client: AsyncClient):
 
     app.dependency_overrides[deps.get_db] = lambda: FakeDB()
 
-    with patch("app.api.v1.auth.security.hash_password", return_value="hashed_pw"), patch(
-        "app.api.v1.auth.security.verify_password", return_value=True
+    with (
+        patch("app.api.v1.auth.security.hash_password", return_value="hashed_pw"),
+        patch("app.api.v1.auth.security.verify_password", return_value=True),
     ):
         register_response = await async_client.post(
             "/api/v1/auth/register",

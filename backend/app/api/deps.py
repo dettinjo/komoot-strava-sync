@@ -1,14 +1,15 @@
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator
-from datetime import datetime, timezone
-from typing import Callable
+from collections.abc import AsyncGenerator, Callable
+from datetime import UTC, datetime
+from uuid import UUID
 
 import redis.asyncio as aioredis
 from fastapi import Depends, HTTPException, Security, status
 from fastapi.security import APIKeyHeader, OAuth2PasswordBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.security import hash_api_key, verify_access_token
@@ -29,7 +30,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
-TIER_RANKS: dict[str, int] = {"free": 0, "pro": 1, "business": 2}
+TIER_RANKS: dict[str, int] = {"free": 0, "pro": 1, "lifetime": 1, "business": 2}
 
 _redis_pool: aioredis.Redis | None = None
 
@@ -53,7 +54,9 @@ async def get_current_user(
     """
     user_id = verify_access_token(token)  # raises 401 on failure
 
-    result = await db.execute(select(User).where(User.id == user_id))
+    result = await db.execute(
+        select(User).where(User.id == UUID(user_id)).options(selectinload(User.strava_token))
+    )
     user = result.scalar_one_or_none()
 
     if user is None or not user.is_active:
@@ -79,9 +82,7 @@ def require_tier(min_tier: str) -> Callable:
     ) -> None:
         from app.db.models.subscription import Subscription
 
-        result = await db.execute(
-            select(Subscription).where(Subscription.user_id == user.id)
-        )
+        result = await db.execute(select(Subscription).where(Subscription.user_id == user.id))
         subscription = result.scalar_one_or_none()
 
         tier = subscription.tier if subscription else "free"
@@ -119,12 +120,10 @@ async def get_current_api_key_user(
         raise credentials_exception
     if api_key_record.revoked_at is not None:
         raise credentials_exception
-    if api_key_record.expires_at is not None and api_key_record.expires_at < datetime.now(timezone.utc):
+    if api_key_record.expires_at is not None and api_key_record.expires_at < datetime.now(UTC):
         raise credentials_exception
 
-    result = await db.execute(
-        select(User).where(User.id == api_key_record.user_id)
-    )
+    result = await db.execute(select(User).where(User.id == api_key_record.user_id))
     user = result.scalar_one_or_none()
 
     if user is None or not user.is_active:

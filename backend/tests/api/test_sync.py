@@ -1,12 +1,14 @@
 from __future__ import annotations
-import pytest
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.services.sync import SyncService
-from app.db.models.user import User, StravaApp
-from app.db.models.sync import UserSyncState, SyncRule
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, patch
+
+import pytest
+
+from app.db.models.sync import SyncRule, UserSyncState
+from app.db.models.user import StravaApp, User
 from app.services.komoot import Tour
+from app.services.sync import SyncService
 
 
 @pytest.mark.asyncio
@@ -34,6 +36,7 @@ async def test_sync_komoot_to_strava_evaluates_rules():
 
     class FakeResult:
         """Fake SQLAlchemy result that returns different objects per query."""
+
         def __init__(self, scalar_val=None, items=None):
             self._scalar = scalar_val
             self._items = items or []
@@ -43,9 +46,11 @@ async def test_sync_komoot_to_strava_evaluates_rules():
 
         def scalars(self):
             items = self._items
+
             class _Scalars:
                 def all(self):
                     return items
+
             return _Scalars()
 
     call_count = {"n": 0}
@@ -79,7 +84,7 @@ async def test_sync_komoot_to_strava_evaluates_rules():
             description="",
             sport="E-Bike",
             strava_sport="EBikeRide",
-            date=datetime.now(timezone.utc),
+            date=datetime.now(UTC),
             distance_m=15000,
             elevation_up_m=200,
         ),
@@ -89,7 +94,7 @@ async def test_sync_komoot_to_strava_evaluates_rules():
             description="",
             sport="Running",
             strava_sport="Run",
-            date=datetime.now(timezone.utc),
+            date=datetime.now(UTC),
             distance_m=5000,
             elevation_up_m=50,
         ),
@@ -114,9 +119,7 @@ async def test_sync_komoot_to_strava_evaluates_rules():
         synced_count = await sync.sync_komoot_to_strava(user, strava_app, mock_komoot, mock_strava)
 
     # ── Assertions ────────────────────────────────────────────────────────
-    assert synced_count == 1, (
-        f"Expected 1 tour synced (E-Bike blocked by rule), got {synced_count}"
-    )
+    assert synced_count == 1, f"Expected 1 tour synced (E-Bike blocked by rule), got {synced_count}"
     # upload_gpx should only ever be called for the Run tour
     mock_strava.upload_gpx.assert_called_once()
     called_with = mock_strava.upload_gpx.call_args

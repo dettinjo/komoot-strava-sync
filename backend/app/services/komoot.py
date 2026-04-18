@@ -1,16 +1,10 @@
 from __future__ import annotations
-"""Asynchronous Komoot API client.
-
-Authentication: HTTP Basic Auth with email + password.
-This client is designed for the async SaaS backend.
-
-API base: https://www.komoot.de/api/v007
-"""
 
 import logging
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass
-from datetime import timezone, datetime
-from typing import Any, AsyncGenerator
+from datetime import UTC, datetime
+from typing import Any
 
 import httpx
 
@@ -76,7 +70,7 @@ def _parse_date(raw: str) -> datetime:
         try:
             dt = datetime.strptime(raw, fmt)
             if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
+                dt = dt.replace(tzinfo=UTC)
             return dt
         except ValueError:
             continue
@@ -88,7 +82,7 @@ class KomootClient:
         self.email = email
         self.password = password
         self.user_id = user_id
-        
+
         # We will reuse this client per instance method call.
         self._client_kwargs: dict[str, Any] = {
             "auth": (email, password),
@@ -114,10 +108,10 @@ class KomootClient:
             tours = data.get("_embedded", {}).get("tours", [])
             if not tours:
                 break
-            
+
             for tour in tours:
                 yield tour
-                
+
             total_pages = data.get("page", {}).get("totalPages", 1)
             page += 1
             if page >= total_pages:

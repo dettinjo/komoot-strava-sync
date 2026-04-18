@@ -1,7 +1,8 @@
 from __future__ import annotations
-"""API endpoints for managing and viewing synced activities."""
 
+from datetime import UTC, datetime, timedelta
 from typing import Any
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import select
@@ -9,11 +10,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api import deps
 from app.core import security
+from app.db.models.subscription import Subscription
 from app.db.models.sync import SyncedActivity
 from app.db.models.user import User
 from app.services.komoot import KomootClient
 
 router = APIRouter(tags=["activities"])
+
+_ACTIVITY_HISTORY_DAYS: dict[str, int] = {"free": 30, "pro": 365, "lifetime": 365, "business": 365}
 
 
 def _serialize_activity(act: SyncedActivity) -> dict[str, Any]:
@@ -43,9 +47,16 @@ async def get_activities(
     db: AsyncSession = Depends(deps.get_db),
 ) -> dict[str, Any]:
     """Retrieve the sync history for the current user."""
+    sub = (
+        await db.execute(select(Subscription).where(Subscription.user_id == user.id))
+    ).scalar_one_or_none()
+    tier = sub.tier if sub else "free"
+    history_days = _ACTIVITY_HISTORY_DAYS.get(tier, 30)
+    cutoff = datetime.now(UTC) - timedelta(days=history_days)
+
     stmt = (
         select(SyncedActivity)
-        .where(SyncedActivity.user_id == user.id)
+        .where(SyncedActivity.user_id == user.id, SyncedActivity.synced_at >= cutoff)
         .order_by(SyncedActivity.synced_at.desc())
         .offset(skip)
         .limit(limit)
@@ -63,7 +74,7 @@ async def get_activities(
 
 @router.get("/{activity_id}")
 async def get_activity_detail(
-    activity_id: str,
+    activity_id: UUID,
     user: User = Depends(deps.get_current_user),
     db: AsyncSession = Depends(deps.get_db),
 ) -> dict[str, Any]:
@@ -83,7 +94,7 @@ async def get_activity_detail(
 
 @router.get("/{activity_id}/gpx")
 async def download_activity_gpx(
-    activity_id: str,
+    activity_id: UUID,
     user: User = Depends(deps.get_current_user),
     db: AsyncSession = Depends(deps.get_db),
 ) -> Response:

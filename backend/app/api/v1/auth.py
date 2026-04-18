@@ -1,7 +1,6 @@
 from __future__ import annotations
-"""API endpoints for user authentication and external connections (Komoot, Strava)."""
 
-from datetime import timezone, datetime
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -14,7 +13,7 @@ from app.api import deps
 from app.core import security
 from app.core.config import settings
 from app.db.models.subscription import Subscription
-from app.db.models.user import StravaToken, User
+from app.db.models.user import StravaApp, StravaToken, User
 
 router = APIRouter(tags=["auth"])
 
@@ -33,10 +32,12 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
 
+
 class KomootCredentials(BaseModel):
     email: str
     password: str
     user_id: str
+
 
 class StravaCallback(BaseModel):
     code: str
@@ -81,13 +82,17 @@ async def login_user(
     result = await db.execute(select(User).where(User.email == payload.email))
     user = result.scalar_one_or_none()
 
-    if user is None or not user.password_hash or not security.verify_password(payload.password, user.password_hash):
+    if (
+        user is None
+        or not user.password_hash
+        or not security.verify_password(payload.password, user.password_hash)
+    ):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid email or password.")
 
     if not user.is_active:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User account is inactive.")
 
-    user.last_login_at = datetime.now(timezone.utc)
+    user.last_login_at = datetime.now(UTC)
     await db.commit()
 
     access_token = security.create_access_token(str(user.id))
@@ -102,19 +107,32 @@ async def refresh_access_token(
     access_token = security.create_access_token(str(user.id))
     return TokenResponse(access_token=access_token)
 
+
 @router.get("/me")
 async def get_current_user_profile(
     user: User = Depends(deps.get_current_user),
     db: AsyncSession = Depends(deps.get_db),
 ) -> dict[str, Any]:
     """Retrieve the current logged-in user profile and connection statuses."""
+    from app.db.models.subscription import Subscription
+
+    sub_result = await db.execute(select(Subscription).where(Subscription.user_id == user.id))
+    sub = sub_result.scalar_one_or_none()
+    tier = sub.tier if sub else "free"
+
     return {
         "id": str(user.id),
         "email": user.email,
         "is_active": user.is_active,
+        "tier": tier,
         "komoot_connected": bool(user.komoot_user_id),
         "strava_connected": bool(user.strava_token),
+        "sync_komoot_to_strava": user.sync_komoot_to_strava,
+        "sync_strava_to_komoot": user.sync_strava_to_komoot,
+        "hide_from_home_default": user.hide_from_home_default,
+        "komoot_poll_interval_min": user.komoot_poll_interval_min,
     }
+
 
 @router.get("/strava/login")
 async def get_strava_login_url() -> dict[str, str]:
@@ -129,6 +147,7 @@ async def get_strava_login_url() -> dict[str, str]:
         "&scope=activity:write,activity:read_all"
     )
     return {"url": url}
+
 
 @router.post("/strava/callback")
 async def strava_oauth_callback(
@@ -154,31 +173,40 @@ async def strava_oauth_callback(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Strava authentication failed: {exc}",
+        ) from exc
+
+    athlete_id = int(data["athlete"]["id"])
+
+    app_result = await db.execute(
+        select(StravaApp).where(StravaApp.is_active == True).limit(1)  # noqa: E712
+    )
+    strava_app = app_result.scalar_one_or_none()
+    if strava_app is None:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "No Strava app configured. Contact the administrator.",
         )
 
-    # Note: Using app_id=1 as default if `StravaApp` multi-tenant table isn't populated dynamically
-    # For a self-hosted individual instance, this works exactly as intended.
-    athlete_id = int(data["athlete"]["id"])
-    
     if user.strava_token:
         user.strava_token.access_token = security.encrypt(data["access_token"])
         user.strava_token.refresh_token = security.encrypt(data["refresh_token"])
-        user.strava_token.expires_at = datetime.fromtimestamp(data["expires_at"], tz=timezone.utc)
+        user.strava_token.expires_at = datetime.fromtimestamp(data["expires_at"], tz=UTC)
         user.strava_token.strava_athlete_id = athlete_id
     else:
         new_token = StravaToken(
             user_id=user.id,
-            strava_app_id=1, 
+            strava_app_id=strava_app.id,
             strava_athlete_id=athlete_id,
             access_token=security.encrypt(data["access_token"]),
             refresh_token=security.encrypt(data["refresh_token"]),
-            expires_at=datetime.fromtimestamp(data["expires_at"], tz=timezone.utc),
-            connected_at=datetime.now(timezone.utc)
+            expires_at=datetime.fromtimestamp(data["expires_at"], tz=UTC),
+            connected_at=datetime.now(UTC),
         )
         db.add(new_token)
-        
+
     await db.commit()
     return {"status": "success", "message": "Strava account connected"}
+
 
 @router.post("/komoot")
 async def setup_komoot_connection(
@@ -190,11 +218,11 @@ async def setup_komoot_connection(
     user.komoot_email_encrypted = security.encrypt(payload.email)
     user.komoot_password_encrypted = security.encrypt(payload.password)
     user.komoot_user_id = payload.user_id
-    user.komoot_connected_at = datetime.now(timezone.utc)
-    
+    user.komoot_connected_at = datetime.now(UTC)
+
     # Enable sync by default when they connect valid credentials
     user.sync_komoot_to_strava = True
-    
+
     await db.commit()
     return {"status": "success", "message": "Komoot connected successfully"}
 
@@ -226,3 +254,46 @@ async def disconnect_komoot(
     user.sync_komoot_to_strava = False
     await db.commit()
     return {"status": "success", "message": "Komoot account disconnected"}
+
+
+class UserSettings(BaseModel):
+    sync_komoot_to_strava: bool | None = None
+    sync_strava_to_komoot: bool | None = None
+    hide_from_home_default: bool | None = None
+    komoot_poll_interval_min: int | None = None
+
+
+@router.patch("/me/settings")
+async def update_user_settings(
+    payload: UserSettings,
+    user: User = Depends(deps.get_current_user),
+    db: AsyncSession = Depends(deps.get_db),
+) -> dict[str, Any]:
+    """Update the current user's sync preferences."""
+    if payload.sync_komoot_to_strava is not None:
+        user.sync_komoot_to_strava = payload.sync_komoot_to_strava
+    if payload.sync_strava_to_komoot is not None:
+        user.sync_strava_to_komoot = payload.sync_strava_to_komoot
+    if payload.hide_from_home_default is not None:
+        user.hide_from_home_default = payload.hide_from_home_default
+    if payload.komoot_poll_interval_min is not None:
+        from app.db.models.subscription import Subscription as _Subscription
+
+        sub = (
+            await db.execute(select(_Subscription).where(_Subscription.user_id == user.id))
+        ).scalar_one_or_none()
+        tier = sub.tier if sub else "free"
+        min_interval = 120 if tier == "free" else 10
+        if payload.komoot_poll_interval_min < min_interval:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                f"Poll interval must be at least {min_interval} minutes on your plan.",
+            )
+        user.komoot_poll_interval_min = payload.komoot_poll_interval_min
+    await db.commit()
+    return {
+        "sync_komoot_to_strava": user.sync_komoot_to_strava,
+        "sync_strava_to_komoot": user.sync_strava_to_komoot,
+        "hide_from_home_default": user.hide_from_home_default,
+        "komoot_poll_interval_min": user.komoot_poll_interval_min,
+    }

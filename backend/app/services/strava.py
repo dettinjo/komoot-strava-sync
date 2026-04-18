@@ -1,16 +1,8 @@
 from __future__ import annotations
-"""Asynchronous Strava API client.
 
-This client is designed for the async SaaS backend. It assumes the 
-Strava access token has already been refreshed and validated by the caller.
-
-ALL outbound calls should be wrapped in `RateLimitGuard.call()` by the referencing service 
-to ensure we don't exceed Strava's global 15-minute and daily application limits.
-"""
-
+import asyncio
 import io
 import logging
-import asyncio
 from typing import Any
 
 import httpx
@@ -20,15 +12,15 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 STRAVA_BASE = "https://www.strava.com"
-UPLOAD_POLL_INTERVAL = 3.0   # seconds between status polls
-UPLOAD_MAX_ATTEMPTS = 30     # max polls before giving up (~90 s)
+UPLOAD_POLL_INTERVAL = 3.0  # seconds between status polls
+UPLOAD_MAX_ATTEMPTS = 30  # max polls before giving up (~90 s)
 
 
 class StravaClient:
     def __init__(self, access_token: str) -> None:
         self.access_token = access_token
         self._auth_header = {"Authorization": f"Bearer {self.access_token}"}
-        
+
     def _client(self) -> httpx.AsyncClient:
         return httpx.AsyncClient(
             headers=self._auth_header,
@@ -61,7 +53,7 @@ class StravaClient:
     ) -> str:
         """Upload a GPX file to Strava and return the upload_id for polling."""
         logger.info("Uploading GPX to Strava: %r (%d bytes)", name, len(gpx_bytes))
-        
+
         data = {
             "data_type": "gpx",
             "name": name,
@@ -69,14 +61,12 @@ class StravaClient:
             "sport_type": sport_type,
             "external_id": external_id,
         }
-        files = {
-            "file": (f"{external_id}.gpx", io.BytesIO(gpx_bytes), "application/gpx+xml")
-        }
-        
+        files = {"file": (f"{external_id}.gpx", io.BytesIO(gpx_bytes), "application/gpx+xml")}
+
         async with httpx.AsyncClient(headers=self._auth_header, timeout=60.0) as client:
             resp = await client.post(f"{STRAVA_BASE}/api/v3/uploads", data=data, files=files)
             resp.raise_for_status()
-            
+
             upload_id = str(resp.json()["id"])
             logger.debug("Upload accepted — upload_id=%s", upload_id)
             return upload_id
@@ -84,7 +74,7 @@ class StravaClient:
     async def poll_upload(self, upload_id: str) -> str:
         """Poll Strava until the upload is processed and return the activity_id."""
         url = f"{STRAVA_BASE}/api/v3/uploads/{upload_id}"
-        
+
         async with self._client() as client:
             for attempt in range(1, UPLOAD_MAX_ATTEMPTS + 1):
                 resp = await client.get(url)
@@ -104,7 +94,9 @@ class StravaClient:
                 logger.debug("Upload status [%d/%d]: %s", attempt, UPLOAD_MAX_ATTEMPTS, status)
                 await asyncio.sleep(UPLOAD_POLL_INTERVAL)
 
-        raise TimeoutError(f"Strava upload {upload_id} did not complete after {UPLOAD_MAX_ATTEMPTS} polls")
+        raise TimeoutError(
+            f"Strava upload {upload_id} did not complete after {UPLOAD_MAX_ATTEMPTS} polls"
+        )
 
     async def update_activity(self, activity_id: str, hide_from_home: bool = True) -> None:
         """Update activity attributes after upload.
@@ -129,13 +121,15 @@ class StravaClient:
             resp.raise_for_status()
             return resp.json()
 
-    async def get_activities(self, after: int = None, page: int = 1, per_page: int = 50) -> list[Any]:
-        """Fetch historical activities, iterating automatically if required, to identify manually synced Komoot rides."""
+    async def get_activities(
+        self, after: int = None, page: int = 1, per_page: int = 50
+    ) -> list[Any]:
+        """Fetch a page of athlete activities from Strava."""
         url = f"{STRAVA_BASE}/api/v3/athlete/activities"
         params = {"page": page, "per_page": per_page}
         if after:
             params["after"] = after
-            
+
         async with self._client() as client:
             resp = await client.get(url, params=params)
             resp.raise_for_status()

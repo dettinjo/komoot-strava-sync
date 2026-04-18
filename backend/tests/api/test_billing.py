@@ -1,5 +1,6 @@
 from __future__ import annotations
-from datetime import datetime, timezone
+
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 import pytest
@@ -15,35 +16,34 @@ async def test_checkout_endpoint(async_client: AsyncClient):
     from app.api import deps
     from app.core.config import settings
     from app.main import app
-    
+
     # We must patch the settings temporarily so billing thinks it's configured
     settings.STRIPE_SECRET_KEY = "sk_test_fake"
     settings.STRIPE_PRICE_PRO = "price_fake123"
-    
+
     fake_user = User(id="00000000-0000-0000-0000-000000000000", email="test@test.com")
-    
+
     app.dependency_overrides[deps.get_current_user] = lambda: fake_user
 
     class FakeDB:
         async def execute(self, stmt):
             pass
+
     app.dependency_overrides[deps.get_db] = lambda: FakeDB()
 
     with patch("stripe.checkout.Session.create") as mock_create:
+
         class FakeSession:
             url = "https://checkout.stripe.com/fake_url"
-            
+
         mock_create.return_value = FakeSession()
 
-        response = await async_client.post(
-            "/api/v1/billing/checkout",
-            json={"tier": "pro"}
-        )
-        
+        response = await async_client.post("/api/v1/billing/checkout", json={"tier": "pro"})
+
         assert response.status_code == 200
         assert "url" in response.json()
         assert response.json()["url"] == "https://checkout.stripe.com/fake_url"
-        
+
         # Verify it passed the right price ID mapped from "pro"
         mock_create.assert_called_once()
         call_args = mock_create.call_args[1]
@@ -66,7 +66,7 @@ async def test_get_subscription_status(async_client: AsyncClient):
         status="active",
         stripe_customer_id="cus_123",
         stripe_subscription_id="sub_123",
-        current_period_end=datetime.now(timezone.utc),
+        current_period_end=datetime.now(UTC),
         activities_synced_this_period=7,
     )
 

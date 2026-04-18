@@ -1,8 +1,8 @@
 from __future__ import annotations
-"""API endpoints for Pro+ users managing developer API keys."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -28,11 +28,7 @@ async def list_api_keys(
     db: AsyncSession = Depends(deps.get_db),
 ) -> dict[str, Any]:
     """List all active and revoked API keys for the current user."""
-    stmt = (
-        select(ApiKey)
-        .where(ApiKey.user_id == user.id)
-        .order_by(ApiKey.created_at.desc())
-    )
+    stmt = select(ApiKey).where(ApiKey.user_id == user.id).order_by(ApiKey.created_at.desc())
     result = await db.execute(stmt)
     keys = result.scalars().all()
 
@@ -60,21 +56,20 @@ async def create_api_key(
 ) -> dict[str, str]:
     """Generate a new Developer API Key for integrations."""
     # Enforce limit of 5 keys per user for safety
-    stmt = select(ApiKey).where(ApiKey.user_id == user.id, ApiKey.revoked_at == None) # noqa
+    stmt = select(ApiKey).where(ApiKey.user_id == user.id, ApiKey.revoked_at == None)  # noqa
     result = await db.execute(stmt)
     active_keys = result.scalars().all()
-    
+
     if len(active_keys) >= 5:
         raise HTTPException(
-            status.HTTP_400_BAD_REQUEST, 
-            "Maximum limit of 5 active API keys reached."
+            status.HTTP_400_BAD_REQUEST, "Maximum limit of 5 active API keys reached."
         )
 
     raw_key, key_hash = generate_api_key()
-    
+
     # Store just the hash and a visual prefix
     key_prefix = raw_key[:8] + "..."
-    
+
     new_key = ApiKey(
         user_id=user.id,
         key_hash=key_hash,
@@ -89,25 +84,23 @@ async def create_api_key(
         "name": new_key.name,
         "key_prefix": new_key.key_prefix,
         "raw_key": raw_key,
-        "message": "Store this raw_key securely. It will never be shown again."
+        "message": "Store this raw_key securely. It will never be shown again.",
     }
 
 
 @router.delete("/{key_id}")
 async def revoke_api_key(
-    key_id: str,
+    key_id: UUID,
     user: User = Depends(deps.get_current_user),
     _tier: None = Depends(deps.require_tier("pro")),
     db: AsyncSession = Depends(deps.get_db),
 ) -> dict[str, str]:
     """Revoke an API key without deleting its audit history."""
-    result = await db.execute(
-        select(ApiKey).where(ApiKey.id == key_id, ApiKey.user_id == user.id)
-    )
+    result = await db.execute(select(ApiKey).where(ApiKey.id == key_id, ApiKey.user_id == user.id))
     key = result.scalar_one_or_none()
     if key is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "API key not found.")
 
-    key.revoked_at = datetime.now(timezone.utc)
+    key.revoked_at = datetime.now(UTC)
     await db.commit()
     return {"status": "success"}
