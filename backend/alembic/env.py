@@ -1,11 +1,14 @@
 from __future__ import annotations
-from logging.config import fileConfig
-from sqlalchemy.ext.asyncio import create_async_engine
-from alembic import context
+
 import asyncio
+from logging.config import fileConfig
+
+from sqlalchemy.ext.asyncio import create_async_engine
+
+from alembic import context
+from app.core.config import settings
 from app.db.base import Base
 from app.db.models import *  # noqa: F401 — ensures all models are registered
-from app.core.config import settings
 
 config = context.config
 if config.config_file_name:

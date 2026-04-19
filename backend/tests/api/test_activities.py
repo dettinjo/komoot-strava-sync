@@ -1,5 +1,6 @@
 from __future__ import annotations
-from datetime import datetime, timezone
+
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -12,36 +13,23 @@ from app.db.models.user import User
 
 @pytest.mark.asyncio
 async def test_get_activities_empty(async_client: AsyncClient):
-    """Test retrieving activities when the user has none."""
-    from app.api import deps
-    from app.main import app
-    
-    fake_user = User(id="00000000-0000-0000-0000-000000000000", email="test@test.com")
-    app.dependency_overrides[deps.get_current_user] = lambda: fake_user
-    
-    class FakeResult:
-        def scalars(self):
-            class FakeScalars:
-                def all(self):
-                    return [] # Empty list of activities
-            return FakeScalars()
+    """Activities list returns empty for a new user (uses real DB via async_client fixture)."""
+    # async_client is wired to a real in-memory DB via conftest; register a fresh user.
+    reg = await async_client.post(
+        "/api/v1/auth/register",
+        json={"email": "act_empty@test.com", "password": "pw1234"},
+    )
+    token = reg.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
 
-    class FakeDB:
-        async def execute(self, stmt):
-            return FakeResult()
-            
-    app.dependency_overrides[deps.get_db] = lambda: FakeDB()
+    response = await async_client.get("/api/v1/activities", headers=headers)
 
-    response = await async_client.get("/api/v1/activities")
-    
     assert response.status_code == 200
     data = response.json()
     assert data["count"] == 0
     assert data["data"] == []
     assert data["limit"] == 50
     assert data["skip"] == 0
-    
-    app.dependency_overrides.clear()
 
 
 @pytest.mark.asyncio
@@ -62,8 +50,8 @@ async def test_get_activity_detail(async_client: AsyncClient):
         sport_type="Ride",
         distance_m=12000,
         elevation_up_m=200,
-        started_at=datetime.now(timezone.utc),
-        synced_at=datetime.now(timezone.utc),
+        started_at=datetime.now(UTC),
+        synced_at=datetime.now(UTC),
     )
 
     app.dependency_overrides[deps.get_current_user] = lambda: fake_user
@@ -112,7 +100,7 @@ async def test_download_activity_gpx(async_client: AsyncClient):
         sync_status="completed",
         activity_name="Hill Session",
         sport_type="Ride",
-        synced_at=datetime.now(timezone.utc),
+        synced_at=datetime.now(UTC),
     )
 
     app.dependency_overrides[deps.get_current_user] = lambda: fake_user

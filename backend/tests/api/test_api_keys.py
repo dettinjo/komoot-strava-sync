@@ -1,4 +1,7 @@
 from __future__ import annotations
+
+from datetime import UTC
+
 import pytest
 from httpx import AsyncClient
 
@@ -9,10 +12,8 @@ from app.db.models.user import User
 async def test_create_and_list_api_keys(async_client: AsyncClient):
     """Test generating a new API key and listing them."""
     from app.api import deps
+    from app.db.models.subscription import Subscription
     from app.main import app
-    from app.db.models.subscription import ApiKey
-    
-    from app.db.models.subscription import Subscription, ApiKey
 
     fake_user = User(id="00000000-0000-0000-0000-000000000000", is_active=True)
     fake_sub = Subscription(user_id=fake_user.id, tier="pro", status="active")
@@ -32,9 +33,11 @@ async def test_create_and_list_api_keys(async_client: AsyncClient):
 
         def scalars(self):
             items = self._items
+
             class _S:
                 def all(self):
                     return items
+
             return _S()
 
     class FakeDB:
@@ -47,9 +50,10 @@ async def test_create_and_list_api_keys(async_client: AsyncClient):
             return FakeResult()
 
         def add(self, obj):
-            from datetime import datetime, timezone
+            from datetime import datetime
+
             if not getattr(obj, "created_at", None):
-                obj.created_at = datetime.now(timezone.utc)
+                obj.created_at = datetime.now(UTC)
             mock_db_state.append(obj)
 
         async def commit(self):
@@ -58,24 +62,21 @@ async def test_create_and_list_api_keys(async_client: AsyncClient):
     app.dependency_overrides[deps.get_db] = lambda: FakeDB()
 
     # Create key
-    response = await async_client.post(
-        "/api/v1/api-keys",
-        json={"name": "Zapier Integration"}
-    )
-    
+    response = await async_client.post("/api/v1/api-keys", json={"name": "Zapier Integration"})
+
     assert response.status_code == 200
     data = response.json()
     assert "raw_key" in data
     assert data["raw_key"].startswith("kss_")
     assert data["name"] == "Zapier Integration"
-    
+
     # List keys
     response_list = await async_client.get("/api/v1/api-keys")
     assert response_list.status_code == 200
     list_data = response_list.json()
     assert len(list_data["data"]) == 1
     assert list_data["data"][0]["name"] == "Zapier Integration"
-    
+
     app.dependency_overrides.clear()
 
 
@@ -83,8 +84,8 @@ async def test_create_and_list_api_keys(async_client: AsyncClient):
 async def test_revoke_api_key(async_client: AsyncClient):
     """Test revoking an existing API key."""
     from app.api import deps
+    from app.db.models.subscription import ApiKey, Subscription
     from app.main import app
-    from app.db.models.subscription import Subscription, ApiKey
 
     fake_user = User(id="00000000-0000-0000-0000-000000000000", is_active=True)
     fake_sub = Subscription(user_id=fake_user.id, tier="pro", status="active")

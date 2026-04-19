@@ -1,6 +1,8 @@
 from __future__ import annotations
+
+from unittest.mock import AsyncMock
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock
 from httpx import AsyncClient
 
 
@@ -25,7 +27,6 @@ async def test_stripe_webhook_rejects_invalid_signature(async_client: AsyncClien
 @pytest.mark.asyncio
 async def test_verify_strava_webhook(async_client: AsyncClient):
     """GET challenge verification must echo back the hub.challenge."""
-    import os
     from unittest.mock import patch
 
     token = "super_secret_token_abc123"
@@ -47,8 +48,8 @@ async def test_verify_strava_webhook(async_client: AsyncClient):
 @pytest.mark.asyncio
 async def test_receive_strava_webhook(async_client: AsyncClient):
     """POST from Strava should be accepted and the job enqueued."""
-    from app.main import app
     from app.api import deps
+    from app.main import app
 
     # Provide a mock ARQ pool on the app state
     mock_arq = AsyncMock()
@@ -60,6 +61,7 @@ async def test_receive_strava_webhook(async_client: AsyncClient):
             class _R:
                 def scalar_one_or_none(self):
                     return None
+
             return _R()
 
     app.dependency_overrides[deps.get_db] = lambda: FakeDB()

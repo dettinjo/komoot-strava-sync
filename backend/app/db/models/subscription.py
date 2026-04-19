@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Optional, TYPE_CHECKING
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -38,43 +37,39 @@ class Subscription(Base):
         unique=True,
         nullable=False,
     )
-    stripe_customer_id: Mapped[Optional[str]] = mapped_column(
+    stripe_customer_id: Mapped[str | None] = mapped_column(sa.String, unique=True, nullable=True)
+    stripe_subscription_id: Mapped[str | None] = mapped_column(
         sa.String, unique=True, nullable=True
     )
-    stripe_subscription_id: Mapped[Optional[str]] = mapped_column(
-        sa.String, unique=True, nullable=True
-    )
-    stripe_price_id: Mapped[Optional[str]] = mapped_column(sa.String, nullable=True)
+    stripe_price_id: Mapped[str | None] = mapped_column(sa.String, nullable=True)
     tier: Mapped[str] = mapped_column(sa.String, nullable=False, default="free")
     status: Mapped[str] = mapped_column(sa.String, nullable=False, default="active")
-    trial_ends_at: Mapped[Optional[datetime]] = mapped_column(
+    trial_ends_at: Mapped[datetime | None] = mapped_column(
         sa.DateTime(timezone=True), nullable=True
     )
-    current_period_start: Mapped[Optional[datetime]] = mapped_column(
+    current_period_start: Mapped[datetime | None] = mapped_column(
         sa.DateTime(timezone=True), nullable=True
     )
-    current_period_end: Mapped[Optional[datetime]] = mapped_column(
+    current_period_end: Mapped[datetime | None] = mapped_column(
         sa.DateTime(timezone=True), nullable=True
     )
-    canceled_at: Mapped[Optional[datetime]] = mapped_column(
-        sa.DateTime(timezone=True), nullable=True
-    )
+    canceled_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
     activities_synced_this_period: Mapped[int] = mapped_column(
         sa.Integer, nullable=False, default=0
     )
-    period_reset_at: Mapped[Optional[datetime]] = mapped_column(
+    period_reset_at: Mapped[datetime | None] = mapped_column(
         sa.DateTime(timezone=True), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True),
         nullable=False,
-        default=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
     )
     updated_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True),
         nullable=False,
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
     )
 
     # Relationships
@@ -97,21 +92,15 @@ class ApiKey(Base):
     )
     key_hash: Mapped[str] = mapped_column(sa.String, unique=True, nullable=False)
     key_prefix: Mapped[str] = mapped_column(sa.String, nullable=False)
-    name: Mapped[Optional[str]] = mapped_column(sa.String, nullable=True)
-    last_used_at: Mapped[Optional[datetime]] = mapped_column(
-        sa.DateTime(timezone=True), nullable=True
-    )
-    expires_at: Mapped[Optional[datetime]] = mapped_column(
-        sa.DateTime(timezone=True), nullable=True
-    )
+    name: Mapped[str | None] = mapped_column(sa.String, nullable=True)
+    last_used_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True),
         nullable=False,
-        default=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
     )
-    revoked_at: Mapped[Optional[datetime]] = mapped_column(
-        sa.DateTime(timezone=True), nullable=True
-    )
+    revoked_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
 
 
 class WebhookSubscription(Base):
@@ -130,16 +119,14 @@ class WebhookSubscription(Base):
     )
     url: Mapped[str] = mapped_column(sa.String, nullable=False)
     secret: Mapped[str] = mapped_column(sa.String, nullable=False)
-    events: Mapped[list[str]] = mapped_column(
-        sa.JSON, nullable=False
-    )
+    events: Mapped[list[str]] = mapped_column(sa.JSON, nullable=False)
     is_active: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True),
         nullable=False,
-        default=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
     )
-    last_delivery_at: Mapped[Optional[datetime]] = mapped_column(
+    last_delivery_at: Mapped[datetime | None] = mapped_column(
         sa.DateTime(timezone=True), nullable=True
     )
     failure_count: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
@@ -153,42 +140,26 @@ class NotificationSettings(Base):
         sa.ForeignKey("users.id", ondelete="CASCADE"),
         primary_key=True,
     )
-    email_on_sync_error: Mapped[bool] = mapped_column(
-        sa.Boolean, nullable=False, default=True
-    )
-    email_on_daily_summary: Mapped[bool] = mapped_column(
-        sa.Boolean, nullable=False, default=False
-    )
-    email_on_conflict: Mapped[bool] = mapped_column(
-        sa.Boolean, nullable=False, default=True
-    )
-    webhook_on_sync: Mapped[bool] = mapped_column(
-        sa.Boolean, nullable=False, default=False
-    )
+    email_on_sync_error: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=True)
+    email_on_daily_summary: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=False)
+    email_on_conflict: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=True)
+    webhook_on_sync: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=False)
 
 
 class LicenseCache(Base):
     __tablename__ = "license_cache"
 
-    id: Mapped[int] = mapped_column(
-        sa.Integer, primary_key=True, autoincrement=True
-    )
+    id: Mapped[int] = mapped_column(sa.Integer, primary_key=True, autoincrement=True)
     license_key: Mapped[str] = mapped_column(sa.String, unique=True, nullable=False)
     tier: Mapped[str] = mapped_column(sa.String, nullable=False)
     max_users: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=1)
     features: Mapped[dict] = mapped_column(sa.JSON, nullable=False)
-    issued_to_hash: Mapped[Optional[str]] = mapped_column(sa.String, nullable=True)
-    validated_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), nullable=False
-    )
-    expires_at: Mapped[Optional[datetime]] = mapped_column(
-        sa.DateTime(timezone=True), nullable=True
-    )
-    grace_until: Mapped[Optional[datetime]] = mapped_column(
-        sa.DateTime(timezone=True), nullable=True
-    )
+    issued_to_hash: Mapped[str | None] = mapped_column(sa.String, nullable=True)
+    validated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
+    grace_until: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True),
         nullable=False,
-        default=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
     )

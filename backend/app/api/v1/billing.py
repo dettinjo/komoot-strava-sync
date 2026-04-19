@@ -1,5 +1,4 @@
 from __future__ import annotations
-"""API endpoints for Stripe billing and subscription management."""
 
 import logging
 from typing import Any
@@ -23,7 +22,7 @@ router = APIRouter(tags=["billing"])
 
 
 class CheckoutRequest(BaseModel):
-    tier: str = "pro"  # "pro" or "business"
+    tier: str = "pro"
 
 
 @router.get("/subscription")
@@ -54,8 +53,12 @@ async def get_subscription_status(
         "status": sub.status,
         "stripe_customer_id": sub.stripe_customer_id,
         "stripe_subscription_id": sub.stripe_subscription_id,
-        "current_period_start": sub.current_period_start.isoformat() if sub.current_period_start else None,
-        "current_period_end": sub.current_period_end.isoformat() if sub.current_period_end else None,
+        "current_period_start": sub.current_period_start.isoformat()
+        if sub.current_period_start
+        else None,
+        "current_period_end": sub.current_period_end.isoformat()
+        if sub.current_period_end
+        else None,
         "trial_ends_at": sub.trial_ends_at.isoformat() if sub.trial_ends_at else None,
         "canceled_at": sub.canceled_at.isoformat() if sub.canceled_at else None,
         "activities_synced_this_period": sub.activities_synced_this_period,
@@ -69,18 +72,22 @@ async def create_checkout_session(
     db: AsyncSession = Depends(deps.get_db),
 ) -> dict[str, str]:
     """Create a Stripe Checkout Session for subscription upgrade."""
+    if payload.tier == "pro":
+        price_id = settings.STRIPE_PRICE_PRO
+        checkout_mode = "subscription"
+    elif payload.tier == "lifetime":
+        price_id = settings.STRIPE_PRICE_LIFETIME
+        checkout_mode = "payment"
+    else:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid subscription tier.")
+
     if not settings.STRIPE_SECRET_KEY:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Billing is not configured.")
 
-    if payload.tier == "pro":
-        price_id = settings.STRIPE_PRICE_PRO
-    elif payload.tier == "business":
-        price_id = settings.STRIPE_PRICE_BUSINESS
-    else:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid subscription tier targeted.")
-
     if not price_id:
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Target pricing tier is not configured.")
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR, "Target pricing tier is not configured."
+        )
 
     try:
         session = stripe.checkout.Session.create(
@@ -91,7 +98,7 @@ async def create_checkout_session(
                     "quantity": 1,
                 },
             ],
-            mode="subscription",
+            mode=checkout_mode,
             success_url=f"{settings.FRONTEND_URL}/settings?setup=success",
             cancel_url=f"{settings.FRONTEND_URL}/settings?setup=canceled",
             client_reference_id=str(user.id),
@@ -100,7 +107,9 @@ async def create_checkout_session(
         return {"url": session.url}
     except Exception as e:
         logger.error("Checkout session creation failed for user %s: %s", user.id, e)
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Could not generate checkout session.")
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR, "Could not generate checkout session."
+        ) from e
 
 
 @router.post("/portal")
@@ -109,15 +118,17 @@ async def create_portal_session(
     db: AsyncSession = Depends(deps.get_db),
 ) -> dict[str, str]:
     """Create a Stripe Customer Portal session."""
-    if not settings.STRIPE_SECRET_KEY:
-        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Billing is not configured.")
-
     stmt = select(Subscription).where(Subscription.user_id == user.id)
     result = await db.execute(stmt)
     sub = result.scalar_one_or_none()
 
     if not sub or not sub.stripe_customer_id:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "You do not have an active billing account yet.")
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "You do not have an active billing account yet."
+        )
+
+    if not settings.STRIPE_SECRET_KEY:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Billing is not configured.")
 
     try:
         session = stripe.billing_portal.Session.create(
@@ -127,4 +138,6 @@ async def create_portal_session(
         return {"url": session.url}
     except Exception as e:
         logger.error("Portal session creation failed for user %s: %s", user.id, e)
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Could not generate portal session.")
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR, "Could not generate portal session."
+        ) from e

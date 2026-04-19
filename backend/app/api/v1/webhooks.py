@@ -1,8 +1,7 @@
 from __future__ import annotations
-"""API endpoints for asynchronous Stripe webhooks."""
 
 import logging
-from datetime import timezone, datetime
+from datetime import UTC, datetime
 
 import stripe
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
@@ -24,7 +23,7 @@ stripe.api_key = settings.STRIPE_SECRET_KEY
 async def stripe_webhook(
     request: Request,
     stripe_signature: str = Header(None),
-    db: AsyncSession = Depends(deps.get_db), # we need a non-auth db dependency
+    db: AsyncSession = Depends(deps.get_db),  # we need a non-auth db dependency
 ) -> dict[str, str]:
     """Receive asynchronous events directly from Stripe."""
     if not settings.STRIPE_WEBHOOK_SECRET:
@@ -38,21 +37,20 @@ async def stripe_webhook(
         )
     except ValueError as e:
         logger.error("Invalid payload in Stripe webhook: %s", e)
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid payload")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid payload") from e
     except stripe.error.SignatureVerificationError as e:
         logger.error("Invalid signature in Stripe webhook: %s", e)
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid signature")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid signature") from e
 
-    
     # 1. Checkout Session Completed
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
-        
+
         user_id = session.get("client_reference_id")
         if not user_id:
             logger.warning("No client_reference_id found on checkout session %s", session.get("id"))
             return {"status": "ignored"}
-            
+
         stripe_customer_id = session.get("customer")
         stripe_subscription_id = session.get("subscription")
 
@@ -64,32 +62,37 @@ async def stripe_webhook(
         if not sub:
             sub = Subscription(user_id=user_id)
             db.add(sub)
-            
+
         sub.stripe_customer_id = stripe_customer_id
         sub.stripe_subscription_id = stripe_subscription_id
         sub.status = "active"
-        
-        # In a full implementation, you'd fetch the subscription object to see exactly which tier price was paid.
-        # For simplicity, we just mark them pro.
-        sub.tier = "pro"
-        
+
+        # Determine tier: one-time payment (mode=payment) → lifetime; recurring → pro.
+        mode = session.get("mode")
+        if mode == "payment":
+            sub.tier = "lifetime"
+        else:
+            sub.tier = "pro"
+
         await db.commit()
-        logger.info("Successfully activated subscription for user %s via checkout webhook.", user_id)
+        logger.info(
+            "Activated %s subscription for user %s via checkout webhook.", sub.tier, user_id
+        )
 
     # 2. Subscription Updated / Canceled
     elif event["type"] in ["customer.subscription.deleted", "customer.subscription.updated"]:
         subscription_obj = event["data"]["object"]
         customer_id = subscription_obj.get("customer")
-        
+
         stmt = select(Subscription).where(Subscription.stripe_customer_id == customer_id)
         result = await db.execute(stmt)
         sub = result.scalar_one_or_none()
-        
+
         if sub:
             if event["type"] == "customer.subscription.deleted":
                 sub.status = "canceled"
                 sub.tier = "free"
-                sub.canceled_at = datetime.now(timezone.utc)
+                sub.canceled_at = datetime.now(UTC)
                 logger.info("Subscription canceled for customer %s.", customer_id)
             await db.commit()
 
@@ -105,10 +108,7 @@ async def verify_strava_webhook(
 ) -> dict[str, str]:
     """Verify the Strava webhook subscription challenge."""
     if hub_verify_token != settings.STRAVA_WEBHOOK_VERIFY_TOKEN:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, 
-            detail="Invalid verify token"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid verify token")
     return {"hub.challenge": hub_challenge}
 
 
@@ -119,19 +119,19 @@ async def receive_strava_webhook(
 ) -> dict[str, str]:
     """Receive pushed activity events from Strava."""
     payload = await request.json()
-    
+
     object_type = payload.get("object_type")
     aspect_type = payload.get("aspect_type")
     object_id = payload.get("object_id")
     owner_id = payload.get("owner_id")
-    
+
     if object_type == "activity" and aspect_type == "create":
         logger.info("Strava Webhook: Received new activity %s for athlete %s", object_id, owner_id)
-        
+
         # We process this in the background since it might take time
         arq_pool = request.app.state.arq_pool
         if arq_pool:
             # owner_id is the Strava athlete id, not our local user primary key.
             await arq_pool.enqueue_job("process_strava_activity", str(owner_id), str(object_id))
-            
+
     return {"status": "success"}

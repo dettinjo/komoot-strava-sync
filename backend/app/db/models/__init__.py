@@ -1,7 +1,14 @@
 from __future__ import annotations
-from app.db.models.user import User, StravaApp, StravaToken
-from app.db.models.subscription import Subscription, ApiKey, WebhookSubscription, NotificationSettings, LicenseCache
-from app.db.models.sync import SyncedActivity, UserSyncState, SyncRule, JobAuditLog
+
+from app.db.models.subscription import (
+    ApiKey,
+    LicenseCache,
+    NotificationSettings,
+    Subscription,
+    WebhookSubscription,
+)
+from app.db.models.sync import JobAuditLog, SyncedActivity, SyncRule, UserSyncState
+from app.db.models.user import StravaApp, StravaToken, User
 
 __all__ = [
     "User",

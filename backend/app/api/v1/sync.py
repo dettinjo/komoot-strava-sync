@@ -1,9 +1,8 @@
 from __future__ import annotations
-"""API endpoints for managing synchronization."""
 
 import logging
-from datetime import datetime, timezone, timedelta
-from typing import Any, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import select
@@ -11,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api import deps
 from app.core import security
+from app.db.models.subscription import Subscription
 from app.db.models.sync import SyncedActivity, UserSyncState
 from app.db.models.user import StravaToken, User
 from app.services.strava import StravaClient
@@ -44,9 +44,7 @@ async def get_sync_status(
     db: AsyncSession = Depends(deps.get_db),
 ) -> dict[str, Any]:
     """Return the current sync configuration and recent sync state for the user."""
-    state_result = await db.execute(
-        select(UserSyncState).where(UserSyncState.user_id == user.id)
-    )
+    state_result = await db.execute(select(UserSyncState).where(UserSyncState.user_id == user.id))
     state = state_result.scalar_one_or_none()
 
     activity_result = await db.execute(
@@ -62,8 +60,12 @@ async def get_sync_status(
         "strava_connected": bool(user.strava_token),
         "sync_komoot_to_strava": user.sync_komoot_to_strava,
         "sync_strava_to_komoot": user.sync_strava_to_komoot,
-        "last_komoot_sync_at": state.last_komoot_sync_at.isoformat() if state and state.last_komoot_sync_at else None,
-        "last_strava_sync_at": state.last_strava_sync_at.isoformat() if state and state.last_strava_sync_at else None,
+        "last_komoot_sync_at": state.last_komoot_sync_at.isoformat()
+        if state and state.last_komoot_sync_at
+        else None,
+        "last_strava_sync_at": state.last_strava_sync_at.isoformat()
+        if state and state.last_strava_sync_at
+        else None,
         "last_successful_sync_at": (
             state.last_successful_sync_at.isoformat()
             if state and state.last_successful_sync_at
@@ -90,11 +92,16 @@ async def trigger_sync(
     return {"status": "queued", "message": "Sync job enqueued successfully"}
 
 
+_HISTORY_LIMIT_DAYS: dict[str, int] = {"free": 30, "pro": 730, "lifetime": 730, "business": 730}
+
+
 @router.post("/rebuild-history")
 async def rebuild_history(
     user: User = Depends(deps.get_current_user),
     db: AsyncSession = Depends(deps.get_db),
-    lookback_days: int = Query(default=180, ge=1, le=730, description="How many days of history to crawl"),
+    lookback_days: int = Query(
+        default=180, ge=1, le=730, description="How many days of history to crawl"
+    ),
 ) -> dict[str, Any]:
     """Scan the authenticated user's Strava history for activities originally uploaded
     from Komoot (tagged with external_id=komoot_<tour_id>) and backfill them into the
@@ -102,17 +109,27 @@ async def rebuild_history(
 
     This is safe to call multiple times – existing records are skipped (upsert-style).
     """
+    sub = (
+        await db.execute(select(Subscription).where(Subscription.user_id == user.id))
+    ).scalar_one_or_none()
+    tier = sub.tier if sub else "free"
+    max_days = _HISTORY_LIMIT_DAYS.get(tier, 30)
+    lookback_days = min(lookback_days, max_days)
+
     # Fetch the user's Strava token
     result = await db.execute(select(StravaToken).where(StravaToken.user_id == user.id))
     token = result.scalar_one_or_none()
 
     if not token:
-        return {"status": "error", "message": "No Strava account linked. Please connect Strava first."}
+        return {
+            "status": "error",
+            "message": "No Strava account linked. Please connect Strava first.",
+        }
 
     access_token = security.decrypt_maybe_plaintext(token.access_token)
     strava = StravaClient(access_token=access_token)
 
-    after_ts = int((datetime.now(timezone.utc) - timedelta(days=lookback_days)).timestamp())
+    after_ts = int((datetime.now(UTC) - timedelta(days=lookback_days)).timestamp())
 
     imported = 0
     skipped = 0
@@ -129,7 +146,7 @@ async def rebuild_history(
             break
 
         for activity in activities:
-            external_id: Optional[str] = activity.get("external_id") or ""
+            external_id: str | None = activity.get("external_id") or ""
 
             # Only consider activities originally uploaded from Komoot
             if not external_id.startswith("komoot_"):
@@ -150,7 +167,7 @@ async def rebuild_history(
                 continue
 
             # Parse start date safely
-            started_at: Optional[datetime] = None
+            started_at: datetime | None = None
             try:
                 started_at = datetime.fromisoformat(activity["start_date"].replace("Z", "+00:00"))
             except Exception:
@@ -177,7 +194,9 @@ async def rebuild_history(
 
     logger.info(
         "rebuild_history for user %s: imported=%d, skipped=%d (already tracked)",
-        user.id, imported, skipped,
+        user.id,
+        imported,
+        skipped,
     )
     return {
         "status": "success",

@@ -1,5 +1,4 @@
 from __future__ import annotations
-"""ARQ Worker configuration for background synchronization tasks."""
 
 import logging
 
@@ -46,13 +45,13 @@ class WorkerSettings:
         cron(
             komoot_poll_scheduler,
             hour=None,
-            minute=set(range(0, 60, 5)), # Run every 5 minutes
+            minute=set(range(0, 60, 5)),  # Run every 5 minutes
             run_at_startup=True,
         )
     ]
 
     # Max simultaneous jobs
     max_jobs = 10
-    
+
     # Max job timeout
     job_timeout = 600

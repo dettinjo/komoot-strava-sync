@@ -1,14 +1,16 @@
 from __future__ import annotations
-from datetime import datetime, timezone
-from typing import Any, Callable
+
+from collections.abc import Callable
+from datetime import UTC, datetime
+from typing import Any
 
 import redis.asyncio as aioredis
 
 from app.core.config import settings
 
 TIER_PRIORITY = {"free": 5, "pro": 10, "business": 15}
-WINDOW_15MIN_LIMIT = 90   # leave 10 headroom below Strava's 100
-DAILY_LIMIT = 950         # leave 50 headroom below Strava's 1000
+WINDOW_15MIN_LIMIT = 90  # leave 10 headroom below Strava's 100
+DAILY_LIMIT = 950  # leave 50 headroom below Strava's 1000
 
 
 class RateLimitError(Exception):
@@ -31,6 +33,12 @@ class RateLimitGuard:
             self._redis = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
         return self._redis
 
+    async def daily_count(self, app_id: int) -> int:
+        """Return the current daily Strava API call count for *app_id*."""
+        r = await self.get_redis()
+        date_key = datetime.now(UTC).strftime("%Y-%m-%d")
+        return int(await r.get(f"strava:{app_id}:rl:daily:{date_key}") or 0)
+
     async def call(self, app_id: int, tier: str, fn: Callable, *args: Any, **kwargs: Any) -> Any:
         """Execute *fn*(*args*, **kwargs*) guarded by Strava rate limits.
 
@@ -38,7 +46,7 @@ class RateLimitGuard:
         or if a free-tier caller attempts a call when daily usage > 800.
         """
         r = await self.get_redis()
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         window = int(now.timestamp()) // 900  # 15-min window index
         date_key = now.strftime("%Y-%m-%d")
 
