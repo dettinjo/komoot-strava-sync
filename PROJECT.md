@@ -1,6 +1,18 @@
-# komoot-strava-sync — Project Overview & AI Handoff
+# RoutePass — Project Overview & AI Handoff
 
 > Living document for the project. Read this first when picking up work with any AI tool (Claude Code, Gemini, Codex). Keep it up to date as you implement features.
+> Repository was formerly `komoot-strava-sync`. Brand name is now **RoutePass**.
+
+---
+
+## Brand & Domain
+
+| Item | Value |
+|------|-------|
+| Product name | **RoutePass** |
+| Domain | **routepass.online** (registered 2025-04; .io was available but ~5× more expensive — .online chosen for cost) |
+| Tagline | *Your routes, everywhere you train* |
+| Design system | See `DESIGN.md` |
 
 ---
 
@@ -249,12 +261,79 @@ api_keys.py  (Pro+)
 - [ ] Rate limit guard behavior under load
 - [ ] Multi-app Strava pooling logic (round-robin across `strava_apps` table)
 
+<<<<<<< Updated upstream
 ### Phase 7 — Frontend
 - [ ] Next.js scaffold (`/frontend`)
 - [ ] Dashboard: connection status, sync history, manual trigger
 - [ ] Settings: Komoot/Strava connect/disconnect, sync prefs
 - [ ] Billing: upgrade/downgrade via Stripe Checkout/Portal
 - [ ] Rules editor (Pro)
+=======
+### Phase 3 — Sync Engine
+- [ ] `backend/app/jobs/worker.py` — ARQ WorkerSettings, cron for `komoot_poll_scheduler`
+- [ ] `backend/app/jobs/sync_jobs.py` — `poll_komoot_user`, `komoot_poll_scheduler`
+- [ ] `backend/app/services/sync.py` — SyncService (orchestrates komoot→strava per user)
+- [ ] `sync.py` routes: status, trigger
+
+### Phase 4 — Activities & Billing
+- [ ] `activities.py` routes
+- [ ] `webhooks.py` — Strava push events + Stripe
+- [ ] `billing.py` — Stripe checkout + portal + subscription status
+
+### Phase 5 — Pro Features + Frontend
+- [x] `rules.py` — sync rules CRUD ✅
+- [x] `api_keys.py` — API key management ✅
+- [ ] Next.js frontend scaffold (`/frontend`)
+- [ ] License server (minimal service for self-hosted validation)
+
+### Phase 6 — Platform Integrations (Intervals.icu + Runalyze)
+
+**Intervals.icu**
+- [ ] `backend/app/services/intervals.py` — async client; `push_activity(api_key, athlete_id, activity_data)` via `POST /api/v1/athlete/{id}/activities`
+- [ ] `intervals_icu_api_key_encrypted` + `intervals_icu_athlete_id` columns on `users` (new migration)
+- [ ] `/auth/intervals/connect` — store encrypted API key + athlete ID
+- [ ] `/auth/intervals/disconnect`
+- [ ] Sync job step: after Komoot→Strava upload completes, push to Intervals if user connected
+- [ ] `sync_direction` values extended: `komoot_to_intervals`, `strava_to_intervals`
+
+**Runalyze**
+- [ ] `backend/app/services/runalyze.py` — async client; `push_activity(token, gpx_bytes)` via `POST /api/v1/activity` (multipart GPX upload)
+- [ ] `runalyze_token_encrypted` column on `users` (same migration as above)
+- [ ] `/auth/runalyze/connect` — store encrypted personal access token
+- [ ] `/auth/runalyze/disconnect`
+- [ ] Sync job step: push GPX to Runalyze after Komoot download, if user connected
+
+### Phase 7 — Platform Integrations (Polar + Outdooractive)
+
+**Polar AccessLink** (OAuth 2.0, webhook-driven — no polling needed)
+- [ ] `backend/app/services/polar.py` — async client; list exercises, download FIT/GPX
+- [ ] `polar_tokens` DB table: `user_id`, `access_token_encrypted`, `refresh_token_encrypted`, `expires_at`, `polar_user_id`
+- [ ] Alembic migration for `polar_tokens`
+- [ ] `/auth/polar/connect` → redirect to Polar OAuth → `/auth/polar/callback`
+- [ ] `/auth/polar/disconnect`
+- [ ] `/webhooks/polar` — receive exercise push events, enqueue `process_polar_exercise` ARQ job
+- [ ] `process_polar_exercise` job — fetch exercise → upload to Strava + optionally Intervals/Runalyze
+- [ ] Register Polar webhook on app startup (`POST /v3/webhooks`)
+- [ ] Polar → Strava sport type mapping (exercise sport → Strava `sport_type`)
+
+**Outdooractive** (OAuth 2.0, polled like Komoot)
+- [ ] `backend/app/services/outdooractive.py` — async client; search/fetch routes and recorded activities
+- [ ] `outdooractive_tokens` DB table (same pattern as `polar_tokens`)
+- [ ] Alembic migration for `outdooractive_tokens`
+- [ ] `/auth/outdooractive/connect` → `/auth/outdooractive/callback`
+- [ ] `/auth/outdooractive/disconnect`
+- [ ] `poll_outdooractive_user` ARQ job — same structure as `poll_komoot_user`
+- [ ] Scheduler handles Outdooractive polls alongside Komoot polls (shared budget awareness)
+- [ ] Outdooractive → Strava sport type mapping
+
+### Phase 8 — Testing & Hardening
+- [x] Integration tests (pytest-asyncio, real test DB) ✅
+- [ ] Rate limit behaviour under load
+- [ ] Multi-app Strava pooling logic
+- [ ] Integration tests for Intervals.icu and Runalyze push paths
+- [ ] Polar webhook signature verification
+- [ ] Outdooractive OAuth flow end-to-end test
+>>>>>>> Stashed changes
 
 ---
 
@@ -263,12 +342,13 @@ api_keys.py  (Pro+)
 Read these files in order before writing any code:
 
 1. **This file** (`PROJECT.md`) — goals, status, decisions
-2. `backend/CLAUDE.md` — compact backend reference with patterns, DB conventions, code templates
-3. `AI_HANDOFF.md` — the most current handoff state and recent fixes
-4. `CODEX.md` — Codex-specific workflow guardrails
-5. `backend/.env.example` — all environment variables, if present in your branch
-6. `backend/app/db/models/` — actual schema (3 files)
-7. `backend/app/api/deps.py` — auth dependencies pattern
+2. `DESIGN.md` — design system, color/font/component tokens, frontend file structure, implementation plan
+3. `backend/CLAUDE.md` — compact backend reference with patterns, DB conventions, code templates
+4. `AI_HANDOFF.md` — the most current handoff state and recent fixes
+5. `CODEX.md` — Codex-specific workflow guardrails
+6. `backend/.env.example` — all environment variables, if present in your branch
+7. `backend/app/db/models/` — actual schema (3 files)
+8. `backend/app/api/deps.py` — auth dependencies pattern
 
 Important: `PROJECT.md`, `AI_HANDOFF.md`, and the actual code may diverge. Treat the code as source of truth when they conflict.
 
@@ -382,8 +462,10 @@ MODE 3 — Cloud (Stripe subscription)
 | Sync speed | every 30 min | configurable | ~2 hour batch | **~10 min** |
 | Custom sync rules | — | ✅ (unlimited) | 1 rule | **5 rules** |
 | Strava → Komoot (experimental) | — | ✅ | — | ✅ |
-| Intervals.icu integration | — | ✅ | — | ✅ |
-| Runalyze integration | — | ✅ | — | ✅ |
+| Intervals.icu push | — | ✅ | — | ✅ |
+| Runalyze push | — | ✅ | — | ✅ |
+| Polar pull (Phase 3) | — | ✅ | — | ✅ |
+| Outdooractive pull (Phase 3) | — | ✅ | — | ✅ |
 | Activity history in dashboard | — | unlimited | 30 days | 12 months |
 | Email support | — | — | — | ✅ |
 
@@ -464,16 +546,32 @@ Priority: no-approval APIs first, EU audience alignment, unique value (not alrea
 - 🔲 Strava → Komoot (reverse, experimental, Pro-only, uses unofficial Komoot write API)
 
 **Phase 2 — Pro integrations (build after cloud launch):**
-- 🔲 **Intervals.icu** — open personal API, no approval, API key auth. Huge overlap with serious cyclists. Activities + route data. Very popular in EU.
-- 🔲 **Runalyze** — personal API (supporter tier), popular in German-speaking market (Komoot's home). Strong overlap.
+- 🔲 **Intervals.icu** — open personal API, no approval, API key auth. Push activities from Komoot/Strava → Intervals for training load analysis. ~1 req/sec safe, no daily cap. Huge EU cycling overlap.
+- 🔲 **Runalyze** — personal API token (user must have supporter tier, €1–2/mo). Push activities → Runalyze. 30 req/min limit. German platform, directly overlaps with Komoot's home market.
 
 **Phase 3 — Approval-required (build only after product-market fit):**
-- 🔲 **Polar AccessLink** — any developer can register. Polar users in EU, official API.
-- 🔲 **Garmin Connect** — developer approval required. Huge user base, but Garmin already has native Strava sync. Unique value is Garmin → Komoot direction only.
-- 🔲 **Wahoo** — approval + partnership required. Lower priority.
+- 🔲 **Polar AccessLink** — any developer can register at developer.polar.com, no gating. OAuth 2.0. Webhook push (no polling needed). 50 req/15min/user. Pull Polar activities → Strava/Komoot. Strong in Scandinavia and among triathletes.
+- 🔲 **Outdooractive** — register + approval, free tier 100 req/min. Pull routes/activities as a Komoot alternative. Adding this lets the product market as "any route app → Strava" rather than Komoot-only — significant TAM expansion.
+- 🔲 **Garmin Connect** — developer approval (slow, enterprise-geared). OAuth 1.0a (legacy). Unique value is Garmin → Komoot only — most Garmin users already have native Strava sync. Low priority.
+- 🔲 **Wahoo** — partnership required. Skip.
 - 🔲 **TrainingPeaks** — commercial partnership only. Skip until scale justifies it.
 
-**Note on Garmin/Wahoo:** Most Garmin and Wahoo users already have native Strava sync. The only unique value is pushing those activities INTO Komoot (so they appear in Komoot's activity feed). This is a niche within a niche — build only after the core product is stable and has users asking for it.
+**Integration architecture (shared pattern for all new sources/destinations):**
+Each integration follows the same three-layer pattern:
+1. `backend/app/services/{platform}.py` — async client (httpx), auth handling, data fetch/push
+2. `backend/app/api/v1/auth.py` — connect/disconnect routes (`/auth/{platform}/connect`, `/auth/{platform}/callback` for OAuth)
+3. DB model — `{platform}_tokens` table (OAuth) or encrypted API key column on `users`
+
+**Rate limit summary for planning:**
+
+| Platform | Limit | Type | Notes |
+|----------|-------|------|-------|
+| Strava | 100/15min + 1000/day | Per app (shared) | Critical constraint |
+| Komoot | Undocumented | Per IP | IP-block risk at scale |
+| Intervals.icu | ~1 req/sec | Per key | Generous, no daily cap |
+| Runalyze | 30 req/min | Per token | User must have supporter tier |
+| Polar | 50 req/15min | Per user | Has webhooks (efficient) |
+| Outdooractive | 100 req/min | Per app | Partner agreement for high volume |
 
 ---
 
